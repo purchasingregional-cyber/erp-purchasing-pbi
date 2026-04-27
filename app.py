@@ -1,7 +1,8 @@
 # ==============================================================================
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
+# Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 3.7 (FULL HOLDING VERSION - Smart AI Pattern Scanner)
+# Versi: 3.8 (FULL HOLDING VERSION - Kategori & Satpam Gaib)
 # ==============================================================================
 
 import streamlit as st
@@ -88,28 +89,16 @@ def format_rupiah(angka):
     except: return "Rp 0"
 
 def parse_numeric(value):
-    """Mesin pembersih angka super kuat. Tahan spasi, titik koma terbalik, dan teks RP."""
     try:
         if pd.isna(value) or str(value).strip() == "": return None
         s = str(value).strip()
-        # Lewati jika ini format tanggal
         if re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', s): return None
-        
-        # Bersihkan spasi, karakter aneh, dan tulisan Rp/IDR
         s_clean = re.sub(r'(?i)rp|idr|\s|\xa0', '', s)
-        
-        # Pastikan isinya benar-benar murni angka, titik, atau koma
         if not re.match(r'^[-0-9.,]+$', s_clean): return None
-        
-        # Logika konversi Indonesia vs US
         if ',' in s_clean and '.' in s_clean:
-            if s_clean.rfind(',') > s_clean.rfind('.'): 
-                s_clean = s_clean.replace('.', '').replace(',', '.')
-            else: 
-                s_clean = s_clean.replace(',', '')
-        elif ',' in s_clean: 
-            s_clean = s_clean.replace(',', '.')
-            
+            if s_clean.rfind(',') > s_clean.rfind('.'): s_clean = s_clean.replace('.', '').replace(',', '.')
+            else: s_clean = s_clean.replace(',', '')
+        elif ',' in s_clean: s_clean = s_clean.replace(',', '.')
         return float(s_clean)
     except: return None
 
@@ -218,7 +207,6 @@ if menu == "Pembersihan PO":
                 curr_po, curr_tgl, curr_vendor = "-", "-", "-"
                 col_nama, col_qty, col_harga = -1, -1, -1
                 
-                # 1. Cari Index Kolom (Tahan Banting dari Shift Kolom)
                 for idx, row in df_input.iterrows():
                     row_upper = [str(c).strip().upper() for c in row.values]
                     if "NAMA BARANG" in row_upper and "HARGA" in row_upper:
@@ -226,7 +214,7 @@ if menu == "Pembersihan PO":
                         col_harga = row_upper.index("HARGA")
                         for i, x in enumerate(row_upper):
                             if 'QTY' in x: col_qty = i; break
-                        break # Selesai scan header
+                        break 
                         
                 if col_nama != -1 and col_harga != -1 and col_qty != -1:
                     for idx, row in df_input.iterrows():
@@ -236,7 +224,6 @@ if menu == "Pembersihan PO":
                         
                         if any(x in line_text for x in ["SUBTOTAL", "TOTAL :", "LAP.PEMBELIAN", "PAGE"]): continue
                         
-                        # Deteksi Header Transaksi
                         date_m = next((v for v in val_list if re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', v)), None)
                         po_m = next((v for v in val_list if "PB" in v.upper() and len(v) > 5 and re.search(r'\d', v)), None)
                         
@@ -247,12 +234,9 @@ if menu == "Pembersihan PO":
                             curr_vendor = max(potensi_vendor, key=len).replace("00/01/1900", "").strip() if potensi_vendor else "CASH / TANPA NAMA"
                             continue
                             
-                        # Tarik Data Detail Item (Akurat ke Kolom)
                         if curr_po != "-":
-                            # Pastikan index kolom tidak melebihi panjang data di baris tersebut
                             if col_nama < len(row.values) and col_qty < len(row.values) and col_harga < len(row.values):
                                 item_name = str(row.values[col_nama]).strip()
-                                # Abaikan jika isinya kosong atau tulisan header
                                 if item_name.lower() in ['', 'nan', 'none', 'nama barang', 'subtotal', 'subtotal :']: continue
                                 
                                 qty_val = parse_numeric(row.values[col_qty])
@@ -263,8 +247,7 @@ if menu == "Pembersihan PO":
                                         "UNIT KERJA": "RA", "NO PO": curr_po, "TANGGAL": curr_tgl, "VENDOR": curr_vendor,
                                         "MATA UANG": "RP", "ITEM_KOTOR": item_name, "QTY": qty_val, "HARGA": prc_val
                                     })
-                else:
-                    st.error("Gagal menemukan Header 'Nama Barang', 'Qty', dan 'Harga' pada file ini. Pastikan file RA asli.")
+                else: st.error("Gagal menemukan Header 'Nama Barang', 'Qty', dan 'Harga' pada file ini. Pastikan file RA asli.")
 
             # --- LOGIKA ERP PUSAT (LAMA) ---
             elif "ERP Pusat" in pilihan_format:
@@ -302,7 +285,7 @@ if menu == "Pembersihan PO":
                                     v_str = str(v).strip()
                                     if parse_numeric(v_str) is not None: continue
                                     if re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', v_str): continue
-                                    if re.match(r'^\d+\s+[A-Za-z]', v_str): continue # Cegah ambil "1 ALAT MESIN"
+                                    if re.match(r'^\d+\s+[A-Za-z]', v_str): continue 
                                     if v_str.upper() in ["RP", "USD", "EUR", "CNY", "IDR"]: continue
                                     names.append(v_str)
                                 
@@ -312,7 +295,7 @@ if menu == "Pembersihan PO":
                                     "MATA UANG": curr_money, "ITEM_KOTOR": item_name, "QTY": nums[0], "HARGA": nums[-1]
                                 })
 
-            # --- AI MATCHING & DRAFT PREPARATION ---
+            # --- AI MATCHING & DRAFT PREPARATION (KATEGORI ADDED) ---
             if extracted_rows:
                 st.success(f"✔️ Berhasil mengekstrak {len(extracted_rows)} baris data mentah yang valid.")
                 final_draft = []
@@ -324,6 +307,8 @@ if menu == "Pembersihan PO":
                             "UNIT": r['UNIT KERJA'], "PO": r['NO PO'], "TANGGAL": r['TANGGAL'], 
                             "VENDOR": r['VENDOR'], "ITEM_ASLI": r['ITEM_KOTOR'], 
                             "NAMA_BAKU": baku, "SKU": info.get('NOMOR SKU', '-'), 
+                            "KATEGORI": info.get('KATEGORI', '-'),
+                            "DETAIL KATEGORI": info.get('DETAIL KATEGORI', '-'),
                             "QTY": r['QTY'], "HARGA": r['HARGA']
                         })
                     else:
@@ -331,6 +316,8 @@ if menu == "Pembersihan PO":
                             "UNIT": r['UNIT KERJA'], "PO": r['NO PO'], "TANGGAL": r['TANGGAL'], 
                             "VENDOR": r['VENDOR'], "ITEM_ASLI": r['ITEM_KOTOR'], 
                             "NAMA_BAKU": "⚠️ BARANG BARU", "SKU": "-", 
+                            "KATEGORI": "", # Kosongkan agar user bisa isi manual
+                            "DETAIL KATEGORI": "", # Kosongkan agar user bisa isi manual
                             "QTY": r['QTY'], "HARGA": r['HARGA']
                         })
                 
@@ -341,15 +328,16 @@ if menu == "Pembersihan PO":
 
         except Exception as e: st.error(f"Error Mesin: {e}")
 
-    # --- TAMPILAN TABEL REVIEW (BISA EDIT MANUAL) ---
+    # --- TAMPILAN TABEL REVIEW (SATPAM GAIB) ---
     if 'holding_draft' in st.session_state:
         st.markdown("### ⚠️ TAHAP REVIEW HOLDING")
-        st.info("💡 Silakan klik dan edit langsung pada kolom **NAMA_BAKU** atau **SKU** pada tabel di bawah ini jika tebakan AI keliru.")
+        st.info("💡 **INFO PENTING:** Anda bisa mengisi `KATEGORI` untuk **⚠️ BARANG BARU** secara manual. Jika Anda mengubah kategori pada barang lama (yang sudah ada di Master Data), sistem akan **mengabaikannya** dan tetap memakai data asli dari Master.")
         
         edited_df = st.data_editor(
             st.session_state['holding_draft'], 
             use_container_width=True, 
             hide_index=True,
+            # Kolom KATEGORI dan DETAIL KATEGORI DIBUKA agar Barang Baru bisa diisi
             disabled=["UNIT", "PO", "TANGGAL", "VENDOR", "ITEM_ASLI", "QTY", "HARGA"] 
         )
         
@@ -364,11 +352,22 @@ if menu == "Pembersihan PO":
                         data_to_push = []
                         for _, r in edited_df.iterrows():
                             info = mapping_master.get(r['NAMA_BAKU'], {})
+                            
+                            # --- SATPAM GAIB: Filter Kategori ---
+                            if r['NAMA_BAKU'] != "⚠️ BARANG BARU":
+                                # Paksa ambil dari Master Data
+                                kat_final = info.get('KATEGORI', '-')
+                                det_kat_final = info.get('DETAIL KATEGORI', '-')
+                            else:
+                                # Ambil ketikan manual user untuk barang baru
+                                kat_final = str(r.get('KATEGORI', '-')).strip().upper()
+                                det_kat_final = str(r.get('DETAIL KATEGORI', '-')).strip().upper()
+                            
                             data_to_push.append([
                                 r['UNIT'], r['PO'], r['TANGGAL'], r['VENDOR'], "RP", 
                                 r['ITEM_ASLI'], r['NAMA_BAKU'], r['QTY'], 
                                 info.get('SATUAN', '-'), r['HARGA'], 
-                                info.get('KATEGORI', '-'), info.get('DETAIL KATEGORI', '-'), r['SKU']
+                                kat_final, det_kat_final, r['SKU']
                             ])
                         
                         sheet.append_rows(pd.DataFrame(data_to_push).fillna("-").values.tolist())
@@ -751,7 +750,7 @@ elif menu == "Maintenance Data":
 st.markdown("---")
 st.markdown(
     "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v3.7 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
+    "ERP Purchasing System v3.8 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
     "</p>", 
     unsafe_allow_html=True
 )
