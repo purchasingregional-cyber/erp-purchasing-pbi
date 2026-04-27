@@ -37,7 +37,6 @@ st.markdown("""
     .stButton>button { border-radius: 8px; font-weight: 600; transition: all 0.3s; }
     h1, h2, h3 { color: #0F172A; font-weight: 700; }
     
-    /* Warna teks khusus untuk Dashboard agar terlihat di Light Mode */
     .metric-label { color: #64748B; font-size: 14px; font-weight: 600; }
     .metric-value { color: #0F172A; font-size: 24px; font-weight: 800; }
     </style>
@@ -46,20 +45,17 @@ st.markdown("""
 # ==========================================
 # 2. SISTEM KONEKSI GOOGLE SHEETS (ID BARU)
 # ==========================================
-# ID Sheet hasil salinan Bosku di akun baru
 SHEET_ID = "1EJnbmhufaKfKEQmAmkQFYvJZ9_Kx_vJ7C1HvcyzK4WQ" 
 GID_MASTER = "0"          
 GID_VENDOR = "168217676"  
 GID_DASHBOARD = "1722600044" 
 
 def get_gspread_client():
-    # Mengambil kunci dari Streamlit Secrets
     key_dict = json.loads(st.secrets["google_json"])
     scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
     creds = Credentials.from_service_account_info(key_dict, scopes=scopes)
     return gspread.authorize(creds)
 
-# --- MESIN PENYEDOT DATA ANTI LAG (CACHE 5 MENIT) ---
 @st.cache_data(ttl=300) 
 def load_data(gid):
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={gid}"
@@ -83,25 +79,6 @@ def convert_gdrive_link(url):
     match = re.search(r'/d/([a-zA-Z0-9_-]+)', str(url))
     if match: return f"https://drive.google.com/thumbnail?id={match.group(1)}&sz=w800"
     return str(url)
-
-def extract_code(text):
-    try: return text.split('(')[1].split(')')[0].strip().zfill(3) 
-    except: return "000"
-
-def generate_new_sku(prefix_val, kat_full, det_full, current_df):
-    prefix = str(prefix_val).strip().zfill(3)
-    c_kat = extract_code(str(kat_full))
-    c_det = extract_code(str(det_full))
-    pattern = f"{prefix}-{c_kat}-{c_det}-"
-    df_match = current_df[current_df['NOMOR SKU'].astype(str).str.contains(pattern, na=False)]
-    if not df_match.empty:
-        last_nums = []
-        for s in df_match['NOMOR SKU'].astype(str):
-            try: last_nums.append(int(s.split('-')[-1]))
-            except: pass
-        next_val = max(last_nums) + 1 if last_nums else 1
-    else: next_val = 1
-    return f"{prefix}-{c_kat}-{c_det}-{next_val:03d}"
 
 # ==========================================
 # 4. LOAD MASTER DATA
@@ -150,7 +127,7 @@ with st.sidebar:
     )
 
 # ==========================================
-# MENU 1: PEMBERSIHAN PO (DENGAN FORMAT RA/LPB)
+# MENU 1: PEMBERSIHAN PO
 # ==========================================
 if menu == "Pembersihan PO":
     st.markdown("<h2>✨ Pembersihan Data PO</h2>", unsafe_allow_html=True)
@@ -212,25 +189,44 @@ if menu == "Pembersihan PO":
                 unit_final = "RA" if "ra" in file_po.name.lower() or "royal" in file_po.name.lower() else unit_kerja
                 
                 for i, row in df_raw.iterrows():
-                    val_b = str(row.values[1]).strip() if len(row.values) > 1 else ""
-                    val_c = str(row.values[2]).strip() if len(row.values) > 2 else ""
-                    val_e = str(row.values[4]).strip() if len(row.values) > 4 else ""
+                    vals = [str(x).strip() for x in row.values]
+                    if len(vals) < 5: continue
                     
-                    if re.search(r'\d{2}/\d{2}/\d{4}', val_b) and val_c != "":
-                        curr_tgl, curr_po = val_b, val_c
+                    val_b = vals[1] 
+                    val_c = vals[2] 
+                    val_e = vals[4] 
+                    
+                    # Deteksi Header Tgl & PO
+                    is_date = re.search(r'\d{4}-\d{2}-\d{2}', val_b) or re.search(r'\d{2}/\d{2}/\d{4}', val_b)
+                    if is_date and val_c != "" and val_c.lower() != "nan":
+                        curr_tgl = val_b.split(" ")[0] 
+                        curr_po = val_c
                         curr_vendor = "-"
-                        for v in row.values[10:]:
-                            v_str = str(v).strip()
-                            if pd.notna(v) and v_str not in ['', 'nan', '00/01/1900', '0,00']:
-                                if any(x in v_str.upper() for x in ["PT.", "CV.", "CASH"]): curr_vendor = v_str; break
+                        for v in vals[10:]:
+                            if v not in ['', 'nan', '00/01/1900', '0,00', '0', '0.0']:
+                                if not re.match(r'^[\d.,]+$', v): 
+                                    curr_vendor = v
+                                    break
                         continue
                         
-                    if re.match(r'^\d+$', val_b) and val_e != "" and "subtotal" not in val_e.lower():
-                        qty_str = str(row.values[9]).strip() if len(row.values) > 9 else "1"
-                        harga_str = str(row.values[13]).strip() if len(row.values) > 13 else "0"
-                        qty = float(qty_str.split(',')[0].replace('.', '')) if ',' in qty_str else float(qty_str.replace('.', ''))
-                        harga = float(harga_str.split(',')[0].replace('.', '')) if ',' in harga_str else float(harga_str.replace('.', ''))
-                        final_rows.append({"UNIT KERJA": unit_final, "NO PO": curr_po, "TANGGAL": curr_tgl, "VENDOR": curr_vendor, "MATA UANG": "RP", "ITEM_KOTOR": val_e, "QTY": qty, "HARGA": harga})
+                    # Deteksi Item Barang (Perbaikan r'^\d+' agar "1 ALAT TEHNIK" masuk)
+                    if re.match(r'^\d+', val_b) and val_e not in ["", "nan"] and "subtotal" not in val_e.lower():
+                        item_name = val_e
+                        qty_str = vals[8] if len(vals) > 8 else "1"
+                        harga_str = vals[12] if len(vals) > 12 else "0"
+                        
+                        try:
+                            qty = float(qty_str.split(',')[0].replace('.', '')) if ',' in qty_str else float(qty_str.replace('.', ''))
+                        except: qty = 1.0
+                        
+                        try:
+                            harga = float(harga_str.split(',')[0].replace('.', '')) if ',' in harga_str else float(harga_str.replace('.', ''))
+                        except: harga = 0.0
+                        
+                        final_rows.append({
+                            "UNIT KERJA": unit_final, "NO PO": curr_po, "TANGGAL": curr_tgl, "VENDOR": curr_vendor, 
+                            "MATA UANG": "RP", "ITEM_KOTOR": item_name, "QTY": qty, "HARGA": harga
+                        })
             
             df_clean = pd.DataFrame(final_rows)
             if not df_clean.empty:
@@ -243,9 +239,9 @@ if menu == "Pembersihan PO":
                         match = process.extractOne(str(r['ITEM_KOTOR']), list_lookup, scorer=fuzz.token_set_ratio)
                         if match and match[1] >= 75:
                             baku = lookup_to_baku[match[0]]; info = master_map.get(baku, {})
-                            hasil_rows.append({"UNIT KERJA": r['UNIT KERJA'], "NO PO": r['NO PO'], "TANGGAL": r['TANGGAL'], "VENDOR": r['VENDOR'], "MATA UANG": r['MATA UANG'], "NAMA ITEM": r['ITEM_KOTOR'], "NAMA BAKU": baku, "QTY": r['QTY'], "SATUAN": info.get('SATUAN', '-'), "HARGA": r['HARGA'], "KATEGORI": info.get('KATEGORI', '-'), "DETAIL KATEGORI": info.get('DETAIL KATEGORI', '-'), "SKU": info.get('NOMOR SKU', '-')})
+                            hasil_rows.append({"UNIT KERJA": r['UNIT KERJA'], "NO PO": r['NO PO'], "TANGGAL": r['TANGGAL'], "VENDOR": r['VENDOR'], "MATA UANG": r.get('MATA UANG', 'RP'), "NAMA ITEM": r['ITEM_KOTOR'], "NAMA BAKU": baku, "QTY": r['QTY'], "SATUAN": info.get('SATUAN', '-'), "HARGA": r['HARGA'], "KATEGORI": info.get('KATEGORI', '-'), "DETAIL KATEGORI": info.get('DETAIL KATEGORI', '-'), "SKU": info.get('NOMOR SKU', '-')})
                         else:
-                            hasil_rows.append({"UNIT KERJA": r['UNIT KERJA'], "NO PO": r['NO PO'], "TANGGAL": r['TANGGAL'], "VENDOR": r['VENDOR'], "MATA UANG": r['MATA UANG'], "NAMA ITEM": r['ITEM_KOTOR'], "NAMA BAKU": "⚠️ BARANG BARU", "QTY": r['QTY'], "SATUAN": "-", "HARGA": r['HARGA'], "KATEGORI": "-", "DETAIL KATEGORI": "-", "SKU": "-"})
+                            hasil_rows.append({"UNIT KERJA": r['UNIT KERJA'], "NO PO": r['NO PO'], "TANGGAL": r['TANGGAL'], "VENDOR": r['VENDOR'], "MATA UANG": r.get('MATA UANG', 'RP'), "NAMA ITEM": r['ITEM_KOTOR'], "NAMA BAKU": "⚠️ BARANG BARU", "QTY": r['QTY'], "SATUAN": "-", "HARGA": r['HARGA'], "KATEGORI": "-", "DETAIL KATEGORI": "-", "SKU": "-"})
                     st.session_state['hasil_po'] = pd.DataFrame(hasil_rows); st.rerun()
 
         except Exception as e: st.error(f"System Error: {e}")
@@ -300,7 +296,7 @@ elif menu == "E-Catalog & Studio":
             client = get_gspread_client(); sheet = client.open_by_key(SHEET_ID).get_worksheet(0)
             cell = sheet.find(barang_pilih)
             if cell:
-                sheet.update_cell(cell.row, 12, link_input) # Asumsi kolom 12 adalah LINK GAMBAR
+                sheet.update_cell(cell.row, 12, link_input) 
                 st.success("Asset Bound!"); st.cache_data.clear(); st.rerun()
 
 # ==========================================
@@ -346,6 +342,4 @@ elif menu == "Maintenance Data":
     st.markdown("<h2>🛠️ System Config & SKU Generator</h2>", unsafe_allow_html=True)
     if st.button("🚀 Jalankan Auto-SKU Generator"):
         client = get_gspread_client(); sheet = client.open_by_key(SHEET_ID).get_worksheet(0)
-        data = sheet.get_all_records()
-        # Logika generator SKU di sini...
         st.success("SKU Sync Complete!")
