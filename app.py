@@ -2,7 +2,7 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 3.8 (FULL HOLDING VERSION - Kategori & Satpam Gaib)
+# Versi: 3.9 (FULL HOLDING VERSION - Out of Scope Filter / Delete Row)
 # ==============================================================================
 
 import streamlit as st
@@ -193,7 +193,7 @@ if menu == "Pembersihan PO":
                                      ["Plant RA (ra pembelian.xls)", "ERP Pusat (Include/Exclude)", "Format Ceper (Coming Soon)", "Format Pemalang (Coming Soon)"])
 
     with st.form("upload_holding"):
-        file_raw = st.file_uploader("📥 Upload Excel Mentah:", type=["xlsx", "xls"])
+        file_raw = st.file_uploader("📥 Upload Excel Mentah (Drag & Drop di sini):", type=["xlsx", "xls"])
         btn_proses = st.form_submit_button("🚀 Mulai Ekstraksi & AI Matching", type="primary")
 
     if btn_proses and file_raw:
@@ -295,7 +295,7 @@ if menu == "Pembersihan PO":
                                     "MATA UANG": curr_money, "ITEM_KOTOR": item_name, "QTY": nums[0], "HARGA": nums[-1]
                                 })
 
-            # --- AI MATCHING & DRAFT PREPARATION (KATEGORI ADDED) ---
+            # --- AI MATCHING & DRAFT PREPARATION ---
             if extracted_rows:
                 st.success(f"✔️ Berhasil mengekstrak {len(extracted_rows)} baris data mentah yang valid.")
                 final_draft = []
@@ -303,7 +303,9 @@ if menu == "Pembersihan PO":
                     match = process.extractOne(str(r['ITEM_KOTOR']).upper(), search_list, scorer=fuzz.token_set_ratio)
                     if match and match[1] >= 75:
                         baku = lookup_to_baku_map[match[0]]; info = mapping_master.get(baku, {})
+                        # TAMBAHAN KOLOM "❌ BUKAN SCOPE" (Opsi 2)
                         final_draft.append({
+                            "❌ BUKAN SCOPE": False,
                             "UNIT": r['UNIT KERJA'], "PO": r['NO PO'], "TANGGAL": r['TANGGAL'], 
                             "VENDOR": r['VENDOR'], "ITEM_ASLI": r['ITEM_KOTOR'], 
                             "NAMA_BAKU": baku, "SKU": info.get('NOMOR SKU', '-'), 
@@ -313,11 +315,12 @@ if menu == "Pembersihan PO":
                         })
                     else:
                         final_draft.append({
+                            "❌ BUKAN SCOPE": False,
                             "UNIT": r['UNIT KERJA'], "PO": r['NO PO'], "TANGGAL": r['TANGGAL'], 
                             "VENDOR": r['VENDOR'], "ITEM_ASLI": r['ITEM_KOTOR'], 
                             "NAMA_BAKU": "⚠️ BARANG BARU", "SKU": "-", 
-                            "KATEGORI": "", # Kosongkan agar user bisa isi manual
-                            "DETAIL KATEGORI": "", # Kosongkan agar user bisa isi manual
+                            "KATEGORI": "", 
+                            "DETAIL KATEGORI": "", 
                             "QTY": r['QTY'], "HARGA": r['HARGA']
                         })
                 
@@ -328,16 +331,22 @@ if menu == "Pembersihan PO":
 
         except Exception as e: st.error(f"Error Mesin: {e}")
 
-    # --- TAMPILAN TABEL REVIEW (SATPAM GAIB) ---
+    # --- TAMPILAN TABEL REVIEW (SATPAM GAIB & DROP PENYUSUP) ---
     if 'holding_draft' in st.session_state:
         st.markdown("### ⚠️ TAHAP REVIEW HOLDING")
-        st.info("💡 **INFO PENTING:** Anda bisa mengisi `KATEGORI` untuk **⚠️ BARANG BARU** secara manual. Jika Anda mengubah kategori pada barang lama (yang sudah ada di Master Data), sistem akan **mengabaikannya** dan tetap memakai data asli dari Master.")
+        st.info("💡 **INFO:** Centang kotak **❌ BUKAN SCOPE** untuk membuang barang yang bukan wewenang Anda (ATK, dll). Anda juga bisa mengetik `KATEGORI` untuk **⚠️ BARANG BARU**.")
         
         edited_df = st.data_editor(
             st.session_state['holding_draft'], 
             use_container_width=True, 
             hide_index=True,
-            # Kolom KATEGORI dan DETAIL KATEGORI DIBUKA agar Barang Baru bisa diisi
+            column_config={
+                "❌ BUKAN SCOPE": st.column_config.CheckboxColumn(
+                    "❌ BUKAN SCOPE",
+                    help="Centang untuk MEMBUANG barang ini dari laporan",
+                    default=False,
+                )
+            },
             disabled=["UNIT", "PO", "TANGGAL", "VENDOR", "ITEM_ASLI", "QTY", "HARGA"] 
         )
         
@@ -346,20 +355,21 @@ if menu == "Pembersihan PO":
             if st.button("💾 KONFIRMASI: Simpan ke Dashboard Induk", type="primary", use_container_width=True):
                 try:
                     with st.spinner("Tembak data ke Google Sheets..."):
+                        # FILTER DATA: Buang yang dicentang "Bukan Scope"
+                        df_to_save = edited_df[edited_df["❌ BUKAN SCOPE"] == False]
+                        
                         client = get_gspread_client()
                         sheet = client.open_by_key(SHEET_ID).get_worksheet_by_id(int(GID_DASHBOARD))
                         
                         data_to_push = []
-                        for _, r in edited_df.iterrows():
+                        for _, r in df_to_save.iterrows():
                             info = mapping_master.get(r['NAMA_BAKU'], {})
                             
-                            # --- SATPAM GAIB: Filter Kategori ---
+                            # Satpam Gaib
                             if r['NAMA_BAKU'] != "⚠️ BARANG BARU":
-                                # Paksa ambil dari Master Data
                                 kat_final = info.get('KATEGORI', '-')
                                 det_kat_final = info.get('DETAIL KATEGORI', '-')
                             else:
-                                # Ambil ketikan manual user untuk barang baru
                                 kat_final = str(r.get('KATEGORI', '-')).strip().upper()
                                 det_kat_final = str(r.get('DETAIL KATEGORI', '-')).strip().upper()
                             
@@ -370,8 +380,12 @@ if menu == "Pembersihan PO":
                                 kat_final, det_kat_final, r['SKU']
                             ])
                         
-                        sheet.append_rows(pd.DataFrame(data_to_push).fillna("-").values.tolist())
-                        st.balloons(); st.success("🔥 Laporan berhasil masuk ke Dashboard!"); del st.session_state['holding_draft']; time.sleep(2); st.rerun()
+                        if data_to_push:
+                            sheet.append_rows(pd.DataFrame(data_to_push).fillna("-").values.tolist())
+                            st.balloons(); st.success(f"🔥 {len(data_to_push)} Data bersih berhasil masuk ke Dashboard!"); del st.session_state['holding_draft']; time.sleep(2); st.rerun()
+                        else:
+                            st.warning("Tidak ada data yang disimpan (semua dicentang sebagai bukan scope).")
+                            
                 except Exception as e: st.error(f"Simpan Gagal: {e}")
         with c2:
             if st.button("❌ Batalkan Semua", use_container_width=True): del st.session_state['holding_draft']; st.rerun()
@@ -750,7 +764,7 @@ elif menu == "Maintenance Data":
 st.markdown("---")
 st.markdown(
     "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v3.8 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
+    "ERP Purchasing System v3.9 | Proprietary of PT Panca Budi Idaman Tbk | Created with ❤️ for Raihan Subakti"
     "</p>", 
     unsafe_allow_html=True
 )
