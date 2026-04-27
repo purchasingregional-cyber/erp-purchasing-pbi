@@ -88,9 +88,7 @@ def parse_numeric(value):
     try:
         if pd.isna(value) or str(value).strip() == "": return 0.0
         s = str(value).strip()
-        # Hindari tanggal terbaca sebagai angka
         if re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', s): return 0.0
-        # Pastikan hanya string numerik
         if not re.match(r'^[-0-9.,]+$', s): return 0.0
         if ',' in s and '.' in s:
             if s.rfind(',') > s.rfind('.'): s = s.replace('.', '').replace(',', '.')
@@ -166,7 +164,7 @@ with st.sidebar:
         menu_title="", 
         options=["Pembersihan PO", "Pencarian Barang", "E-Catalog & Studio", "Database Vendor", "Dashboard Laporan", "Maintenance Data"],
         icons=["magic", "search", "images", "shop", "bar-chart-line", "tools"], 
-        default_index=0,
+        default_index=5,
         styles={
             "container": {"padding": "0!important", "background-color": "transparent"},
             "icon": {"color": "#64748B", "font-size": "18px"}, 
@@ -180,52 +178,55 @@ with st.sidebar:
 # ==========================================
 if menu == "Pembersihan PO":
     st.markdown("<h2>✨ Pembersihan Data PO</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='color:#64748B;'>Upload laporan ERP mentah untuk diproses secara otomatis.</p>", unsafe_allow_html=True)
+    st.write("Upload laporan mentah dari ERP untuk diproses secara otomatis.")
     
     col_u, col_f = st.columns(2)
-    with col_u: unit_kerja = st.selectbox("🏢 Unit Kerja (Default):", ["PBI CPR", "PBI PML", "PBI MAUK", "PP CUP", "PIH", "RA", "PGP", "- Auto-Detect -"])
-    with col_f: tipe_format = st.radio("⚙️ Tipe Dokumen:", ["Format ERP (Laporan per No Bukti)", "Format Standar (Tabel Biasa)"])
+    with col_u:
+        input_unit = st.selectbox("🏢 Unit Kerja (Default):", ["PBI CPR", "PBI PML", "PBI MAUK", "PP CUP", "PIH", "RA", "PGP", "OFFICE PUSAT"])
+    with col_f:
+        tipe_format = st.radio("⚙️ Tipe Dokumen:", ["Format ERP (Laporan per No Bukti)", "Format Standar (Tabel Biasa)"])
+        
+    with st.form("form_upload_erp"):
+        uploaded_file = st.file_uploader("📥 Upload File Laporan ERP (.xlsx atau .xls)", type=["xlsx", "xls"])
+        btn_proses = st.form_submit_button("🚀 Proses Data Laporan (Enter)", type="primary")
 
-    file_po = st.file_uploader("Upload File Excel (.xlsx)", type=["xlsx", "xls"])
-    
-    if file_po:
+    if btn_proses and uploaded_file:
         try:
-            df_raw = pd.read_excel(file_po, header=None)
-            final_rows = []
-            
-            if tipe_format == "Format ERP (Laporan per No Bukti)":
-                curr_po, curr_tgl, curr_vendor, curr_money = "-", "-", "-", "RP"
-                for i, row in df_raw.iterrows():
-                    row_vals = [str(x).strip() for x in row.values if str(x).strip() not in ['nan', 'None', '']]
-                    full_str = " | ".join(row_vals).upper()
+            with st.spinner("Mesin sedang membaca tabel Excel..."):
+                raw_excel = pd.read_excel(uploaded_file, header=None)
+                extracted_rows = []
+                
+                temp_po, temp_tgl, temp_vendor, temp_curr = "-", "-", "-", "RP"
+                
+                for idx, row in raw_excel.iterrows():
+                    cells = [str(c).strip() for c in row.values if str(c).strip() not in ['nan', 'None', '']]
+                    line_text = " | ".join(cells).upper()
 
-                    if not row_vals or any(x in full_str for x in ["SUBTOTAL", "LAPORAN PO", "GRAND TOTAL", "NO TRANS"]): continue
+                    if not cells or any(x in line_text for x in ["SUBTOTAL", "GRAND TOTAL", "LAPORAN PO"]): continue
 
-                    if "EXCLUDE" in full_str or "INCLUDE" in full_str:
-                        curr_po = row_vals[0]
-                        for val in row_vals:
-                            m1 = re.search(r'\d{4}-\d{2}-\d{2}', val)
-                            m2 = re.search(r'\d{2}/\d{2}/\d{4}', val)
-                            if m1: curr_tgl = m1.group(0); break
-                            elif m2: curr_tgl = m2.group(0); break
-                        curr_vendor = "-"
-                        for val in row_vals:
-                            if " - " in val: curr_vendor = val.split(" - ")[-1].strip(); break
-                        curr_money = "RP"
-                        for m in ["RP", "EUR", "CNY", "USD"]:
-                            if m in row_vals: curr_money = m; break
-                        continue 
+                    if "INCLUDE" in line_text or "EXCLUDE" in line_text:
+                        temp_po = cells[0]
+                        for c in cells:
+                            date_match = re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', c)
+                            if date_match: temp_tgl = date_match.group(0); break
+                        
+                        temp_vendor = "-"
+                        for c in cells:
+                            if " - " in c: temp_vendor = c.split(" - ")[-1].strip(); break
+                        
+                        temp_curr = "RP"
+                        for m in ["USD", "EUR", "CNY", "JPY"]:
+                            if m in line_text: temp_curr = m; break
+                        continue
 
-                    if curr_po != "-":
+                    if temp_po != "-":
                         val_list = [str(x) for x in row.values if str(x) != 'nan' and str(x).strip() != '']
                         if len(val_list) >= 4:
-                            # 1. AMBIL ANGKA QTY DAN HARGA
                             numeric_finds = []
                             for v in reversed(val_list):
                                 n = parse_numeric(v)
-                                if n > 0: numeric_finds.insert(0, n)
+                                if n is not None and n > 0: numeric_finds.insert(0, n)
                             
-                            # 2. CARI NAMA BARANG CERDAS
                             if len(numeric_finds) >= 2:
                                 q_val = numeric_finds[0]
                                 p_val = numeric_finds[-1] 
@@ -242,51 +243,103 @@ if menu == "Pembersihan PO":
                                 if potensi_nama:
                                     item_raw_name = max(potensi_nama, key=len)
                                 
-                                final_unit = "PBI CPR" if "ceper" in file_po.name.lower() else "PBI PML" if "pemalang" in file_po.name.lower() else unit_kerja
+                                final_unit = input_unit
+                                if "ceper" in uploaded_file.name.lower(): final_unit = "PBI CPR"
+                                elif "pemalang" in uploaded_file.name.lower(): final_unit = "PBI PML"
+                                elif "ra " in uploaded_file.name.lower() or "royal" in uploaded_file.name.lower(): final_unit = "RA"
                                 
-                                final_rows.append({
-                                    "UNIT KERJA": final_unit, "NO PO": curr_po, "TANGGAL": curr_tgl,
-                                    "VENDOR": curr_vendor, "MATA UANG": curr_money, "ITEM_KOTOR": item_raw_name,
+                                extracted_rows.append({
+                                    "UNIT KERJA": final_unit, "NO PO": temp_po, "TANGGAL": temp_tgl,
+                                    "VENDOR": temp_vendor, "MATA UANG": temp_curr, "ITEM_KOTOR": item_raw_name,
                                     "QTY": q_val, "HARGA": p_val
                                 })
 
-                df_clean = pd.DataFrame(final_rows)
-            else:
-                st.warning("Gunakan Format ERP untuk data Panca Budi."); df_clean = pd.DataFrame()
-
-            if not df_clean.empty:
-                st.success(f"✔️ Berhasil mengekstrak {len(df_clean)} baris item.")
-                st.write("**Preview Data Mentah:**")
-                st.dataframe(df_clean.head(5), use_container_width=True)
+                df_final_clean = pd.DataFrame(extracted_rows)
                 
-                if st.button("🚀 Proses AI Matching", type="primary", use_container_width=True):
-                    hasil_rows = []
-                    for _, r in df_clean.iterrows():
-                        match = process.extractOne(str(r['ITEM_KOTOR']), list_lookup, scorer=fuzz.token_set_ratio)
-                        if match and match[1] >= 75:
-                            baku = lookup_to_baku[match[0]]; info = master_map.get(baku, {})
-                            hasil_rows.append({"UNIT KERJA": r['UNIT KERJA'], "NO PO": r['NO PO'], "TANGGAL": r['TANGGAL'], "VENDOR": r['VENDOR'], "MATA UANG": r.get('MATA UANG', 'RP'), "NAMA ITEM": r['ITEM_KOTOR'], "NAMA BAKU": baku, "QTY": r['QTY'], "SATUAN": info.get('SATUAN', '-'), "HARGA": r['HARGA'], "KATEGORI": info.get('KATEGORI', '-'), "DETAIL KATEGORI": info.get('DETAIL KATEGORI', '-'), "SKU": info.get('NOMOR SKU', '-')})
-                        else:
-                            hasil_rows.append({"UNIT KERJA": r['UNIT KERJA'], "NO PO": r['NO PO'], "TANGGAL": r['TANGGAL'], "VENDOR": r['VENDOR'], "MATA UANG": r.get('MATA UANG', 'RP'), "NAMA ITEM": r['ITEM_KOTOR'], "NAMA BAKU": "⚠️ BARANG BARU", "QTY": r['QTY'], "SATUAN": "-", "HARGA": r['HARGA'], "KATEGORI": "-", "DETAIL KATEGORI": "-", "SKU": "-"})
-                    st.session_state['hasil_po'] = pd.DataFrame(hasil_rows); st.rerun()
+                if not df_final_clean.empty:
+                    st.session_state['df_mentah'] = df_final_clean
+                    if 'matched_df' in st.session_state: del st.session_state['matched_df']
+                else:
+                    st.warning("⚠️ Data kosong! Mesin gagal mendeteksi format ERP Panca Budi (Pastikan ada keterangan INCLUDE/EXCLUDE di file Excel).")
+                    if 'df_mentah' in st.session_state: del st.session_state['df_mentah']
 
-        except Exception as e: st.error(f"System Error: {e}")
+        except Exception as e:
+            st.error(f"❌ Terjadi kesalahan sistem saat membaca file: {str(e)}")
 
-    if 'hasil_po' in st.session_state:
-        st.markdown("### 📑 Review Hasil Pembersihan")
-        st.dataframe(st.session_state['hasil_po'], use_container_width=True)
-        col_btn1, col_btn2 = st.columns(2)
-        with col_btn1:
-            if st.button("💾 Simpan ke Database Induk", type="primary", use_container_width=True):
+    if 'df_mentah' in st.session_state and 'matched_df' not in st.session_state:
+        df_view_mentah = st.session_state['df_mentah']
+        st.success(f"✔️ Berhasil mengekstrak {len(df_view_mentah)} baris item barang.")
+        st.write("### 📋 Preview Data Mentah")
+        st.dataframe(df_view_mentah, use_container_width=True)
+        
+        if st.button("🤖 Jalankan AI Matching (Sinkronkan ke Master Barang)", type="primary"):
+            with st.spinner("AI sedang mencocokkan nama barang..."):
+                matched_results = []
+                progress_bar = st.progress(0)
+                total_count = len(df_view_mentah)
+
+                for i, r in df_view_mentah.iterrows():
+                    progress_bar.progress((i + 1) / total_count)
+                    
+                    item_to_search = str(r['ITEM_KOTOR']).upper()
+                    hasil_match = process.extractOne(item_to_search, search_list, scorer=fuzz.token_set_ratio)
+                    
+                    if hasil_match and hasil_match[1] >= 75:
+                        nama_baku_ketemu = lookup_to_baku_map[hasil_match[0]]
+                        info_master = mapping_master.get(nama_baku_ketemu, {})
+                        
+                        matched_results.append({
+                            "UNIT KERJA": r['UNIT KERJA'], "NO PO": r['NO PO'], "TANGGAL": r['TANGGAL'],
+                            "VENDOR": r['VENDOR'], "MATA UANG": r['MATA UANG'], "NAMA ASLI": r['ITEM_KOTOR'],
+                            "NAMA BAKU": nama_baku_ketemu, "QTY": r['QTY'], 
+                            "SATUAN": info_master.get('SATUAN', '-'), "HARGA": r['HARGA'],
+                            "KATEGORI": info_master.get('KATEGORI', '-'),
+                            "SKU": info_master.get('NOMOR SKU', '-')
+                        })
+                    else:
+                        matched_results.append({
+                            "UNIT KERJA": r['UNIT KERJA'], "NO PO": r['NO PO'], "TANGGAL": r['TANGGAL'],
+                            "VENDOR": r['VENDOR'], "MATA UANG": r['MATA UANG'], "NAMA ASLI": r['ITEM_KOTOR'],
+                            "NAMA BAKU": "⚠️ BARANG BARU (BELUM ADA DI MASTER)", "QTY": r['QTY'], 
+                            "SATUAN": "-", "HARGA": r['HARGA'], "KATEGORI": "-", "SKU": "-"
+                        })
+                
+                st.session_state['matched_df'] = pd.DataFrame(matched_results)
+                st.rerun()
+
+    if 'matched_df' in st.session_state:
+        df_view_final = st.session_state['matched_df']
+        st.write("---")
+        st.write("### 📑 Review Final & Simpan")
+        st.dataframe(df_view_final, use_container_width=True)
+        
+        c_save, c_cancel = st.columns(2)
+        
+        with c_save:
+            if st.button("💾 Simpan ke Database Transaksi (Google Sheets)", type="primary", use_container_width=True):
                 try:
-                    with st.spinner("Sinkronisasi ke Google Sheets..."):
-                        client = get_gspread_client()
-                        sheet_4 = client.open_by_key(SHEET_ID).get_worksheet_by_id(int(GID_DASHBOARD))
-                        sheet_4.append_rows(st.session_state['hasil_po'].fillna("").values.tolist())
-                        st.success("Tersimpan!"); del st.session_state['hasil_po']; st.rerun()
-                except Exception as e: st.error(e)
-        with col_btn2:
-            if st.button("❌ Batal", use_container_width=True): del st.session_state['hasil_po']; st.rerun()
+                    with st.spinner("Mengirim data ke awan..."):
+                        gc = get_gspread_connection()
+                        spread = gc.open_by_key(SHEET_ID)
+                        worksheet = spread.get_worksheet_by_id(int(GID_DASHBOARD))
+                        
+                        data_to_push = df_view_final.fillna("-").values.tolist()
+                        worksheet.append_rows(data_to_push)
+                        
+                        st.balloons()
+                        st.success("🔥 BERHASIL! Data sudah masuk ke Database Induk.")
+                        del st.session_state['matched_df'] 
+                        del st.session_state['df_mentah']
+                        time.sleep(2)
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"Gagal Simpan: {e}")
+        
+        with c_cancel:
+            if st.button("❌ Batalkan Semua", use_container_width=True):
+                del st.session_state['matched_df']
+                if 'df_mentah' in st.session_state: del st.session_state['df_mentah']
+                st.rerun()
 
 # ==========================================
 # MENU 2: PENCARIAN BARANG
@@ -383,11 +436,10 @@ elif menu == "Database Vendor":
         df_v = load_data(GID_VENDOR)
         if not df_v.empty:
             df_v.columns = df_v.columns.str.strip().str.upper()
-            # JIKA ADA KEYWORD, FILTER DATA. JIKA TIDAK, TAMPILKAN SEMUA.
             if keyword:
                 res = df_v[df_v.astype(str).apply(lambda x: x.str.contains(keyword, case=False)).any(axis=1)]
             else:
-                res = df_v.head(100) # Tampilkan 100 teratas jika kosong
+                res = df_v.head(100)
                 
             for _, v in res.iterrows():
                 with st.expander(f"🏢 {v.get('NAMA VENDOR', '-')} | Cat: {v.get('KATEGORI', '-')} | Level: {v.get('GRUP', '-')} "):
@@ -573,19 +625,80 @@ elif menu == "Maintenance Data":
     
     if not df_missing.empty:
         st.warning(f"⚠️ Terdeteksi {len(df_missing)} item yang membutuhkan Nomor SKU.")
-        if st.button("🚀 Execute SKU Injection", type="primary"):
-            with st.spinner("Processing..."):
+        
+        # TOMBOL GENERATE PREVIEW
+        if st.button("🔄 Generate Preview SKU", type="primary"):
+            with st.spinner("Membuat draft SKU..."):
                 try:
-                    client = get_gspread_client(); sheet_master = client.open_by_key(SHEET_ID).get_worksheet(0)
-                    all_data = sheet_master.get_all_values(); headers = [str(h).strip().upper() for h in all_data[0]]
+                    client = get_gspread_client()
+                    sheet_master = client.open_by_key(SHEET_ID).get_worksheet(0)
+                    all_data = sheet_master.get_all_values()
+                    headers = [str(h).strip().upper() for h in all_data[0]]
                     df_m = pd.DataFrame(all_data[1:], columns=headers)
                     
-                    c_s = next((c for c in headers if 'SKU' in c), None); c_k = next((c for c in headers if 'KATEGORI' in c and 'DETAIL' not in c), None); c_d = next((c for c in headers if 'DETAIL' in c), None)
+                    c_s = next((c for c in headers if 'SKU' in c), None)
+                    c_k = next((c for c in headers if 'KATEGORI' in c and 'DETAIL' not in c), None)
+                    c_d = next((c for c in headers if 'DETAIL' in c), None)
+                    
                     if c_s and c_k and c_d:
+                        preview_data = []
                         for idx, row in df_m.iterrows():
                             val = str(row[c_s]).strip()
-                            if len(val) < 10 or val.upper() in ['NAN', 'NONE', 'NULL', '#N/A', '']: df_m.at[idx, c_s] = generate_new_sku("001", row[c_k], row[c_d], df_m)
-                        sheet_master.clear(); sheet_master.update(values=[df_m.columns.tolist()] + df_m.values.tolist())
-                        st.success("Injection Complete!"); time.sleep(1.5); st.rerun()
-                except Exception as e: st.error(f"Error: {e}")
+                            if len(val) < 10 or val.upper() in ['NAN', 'NONE', 'NULL', '#N/A', '']: 
+                                new_sku = generate_new_sku("001", row[c_k], row[c_d], df_m)
+                                df_m.at[idx, c_s] = new_sku
+                                preview_data.append({
+                                    "Baris Excel": idx + 2, 
+                                    "NAMA BAKU": row['NAMA BAKU'],
+                                    "KATEGORI": row[c_k],
+                                    "DETAIL KATEGORI": row[c_d],
+                                    "SKU BARU": new_sku
+                                })
+                        
+                        st.session_state['draft_sku_df'] = df_m
+                        st.session_state['preview_sku_list'] = pd.DataFrame(preview_data)
+                except Exception as e:
+                    st.error(f"Error: {e}")
+
+        # MENAMPILKAN TABEL EDITOR
+        if 'preview_sku_list' in st.session_state:
+            st.info("💡 **Silakan review dan edit manual di kolom 'SKU BARU' pada tabel di bawah ini jika diperlukan. (Misal: menyamakan SKU untuk barang yang sama).**")
+            
+            edited_preview = st.data_editor(
+                st.session_state['preview_sku_list'],
+                disabled=["Baris Excel", "NAMA BAKU", "KATEGORI", "DETAIL KATEGORI"],
+                use_container_width=True,
+                hide_index=True
+            )
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("💾 Konfirmasi & Tembak ke Master Data", type="primary", use_container_width=True):
+                    with st.spinner("Menyimpan ke Google Sheets..."):
+                        try:
+                            df_full = st.session_state['draft_sku_df']
+                            c_s = next((c for c in df_full.columns if 'SKU' in c), None)
+                            
+                            for _, row in edited_preview.iterrows():
+                                excel_idx = row["Baris Excel"] - 2
+                                df_full.at[excel_idx, c_s] = row["SKU BARU"]
+                                
+                            client = get_gspread_client()
+                            sheet_master = client.open_by_key(SHEET_ID).get_worksheet(0)
+                            sheet_master.clear()
+                            sheet_master.update(values=[df_full.columns.tolist()] + df_full.values.tolist())
+                            
+                            st.success("✔️ Berhasil! Master Data telah diupdate.")
+                            del st.session_state['draft_sku_df']
+                            del st.session_state['preview_sku_list']
+                            time.sleep(1.5)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Gagal menyimpan: {e}")
+            with col2:
+                if st.button("❌ Batal", use_container_width=True):
+                    del st.session_state['draft_sku_df']
+                    del st.session_state['preview_sku_list']
+                    st.rerun()
+                    
     else: st.success("✔️ Database Sehat. Semua SKU terverifikasi.")
