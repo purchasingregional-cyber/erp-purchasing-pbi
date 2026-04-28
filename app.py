@@ -2,7 +2,7 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 5.3 (EXECUTIVE EDITION - Executive Date Filter & Export)
+# Versi: 5.4 (EXECUTIVE EDITION - Fix CSS Leaking / Anti-Bocor)
 # ==============================================================================
 
 import streamlit as st
@@ -24,9 +24,10 @@ import plotly.express as px
 # ==========================================
 st.set_page_config(layout="wide", page_title="ERP Holding Purchasing | Panca Budi", page_icon="🏢")
 
+# PERBAIKAN: Menggunakan @import murni agar Streamlit tidak keselek HTML
 st.markdown("""
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
+    @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css');
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
     
     html, body, [class*="css"] {
@@ -218,6 +219,7 @@ if menu == "Pembersihan PO":
             df_input = pd.read_excel(file_raw, header=None)
             extracted_rows = []
 
+            # --- 1. LOGIKA PLANT RA ---
             if "Plant RA" in pilihan_format:
                 st.info("🤖 Mesin Khusus RA memindai struktur kolom secara dinamis...")
                 curr_po, curr_tgl, curr_vendor = "-", "-", "-"
@@ -265,6 +267,7 @@ if menu == "Pembersihan PO":
                                     })
                 else: st.error("Gagal menemukan Header 'Nama Barang', 'Qty', dan 'Harga' pada file ini. Pastikan file RA asli.")
 
+            # --- 2. LOGIKA GABUNGAN (PGP, CEPER, PEMALANG) ---
             elif any(plant in pilihan_format for plant in ["PGP", "Ceper", "Pemalang"]):
                 if "PGP" in pilihan_format: detected_plant = "PGP"
                 elif "Ceper" in pilihan_format: detected_plant = "CEPER"
@@ -327,6 +330,7 @@ if menu == "Pembersihan PO":
                                 "MATA UANG": curr_money, "ITEM_KOTOR": item_name, "QTY": qty_val, "HARGA": prc_val
                             })
 
+            # --- 3. LOGIKA ERP PUSAT (LAMA) ---
             elif "ERP Pusat" in pilihan_format:
                 st.info("🤖 Mesin ERP Pusat sedang bekerja...")
                 curr_po, curr_tgl, curr_vendor, curr_money = "-", "-", "-", "RP"
@@ -639,7 +643,6 @@ elif menu == "Dashboard Laporan":
             df_d = df_d.dropna(subset=['DATE_CLEAN'])
             
             if not df_d.empty:
-                # --- EXECUTIVE GLOBAL FILTER ---
                 st.markdown("<h3 style='color:#0F172A; font-size:18px; margin-top:10px;'>🎛️ Executive Filter Panel</h3>", unsafe_allow_html=True)
                 
                 min_date = df_d['DATE_CLEAN'].min().date()
@@ -649,7 +652,6 @@ elif menu == "Dashboard Laporan":
                 if 'start_date' not in st.session_state: st.session_state.start_date = min_date
                 if 'end_date' not in st.session_state: st.session_state.end_date = max_date
 
-                # Presets Button
                 c_btn1, c_btn2, c_btn3, c_btn4 = st.columns(4)
                 if c_btn1.button("♾️ Semua Waktu", use_container_width=True):
                     st.session_state.start_date = min_date; st.session_state.end_date = max_date; st.rerun()
@@ -667,7 +669,6 @@ elif menu == "Dashboard Laporan":
                     list_unit = ["All Facilities"] + sorted([u for u in df_d[c_unit].unique() if str(u).strip() != ""])
                     filter_unit = st.selectbox("Pilih Lokasi Pabrik:", list_unit)
 
-                # Eksekusi Pemotongan Data berdasarkan Filter
                 if len(date_range) == 2:
                     start_dt, end_dt = date_range
                     df_filtered = df_d[(df_d['DATE_CLEAN'].dt.date >= start_dt) & (df_d['DATE_CLEAN'].dt.date <= end_dt)]
@@ -676,9 +677,8 @@ elif menu == "Dashboard Laporan":
                 if filter_unit != "All Facilities":
                     df_filtered = df_filtered[df_filtered[c_unit] == filter_unit]
                 
-                # Eksekusi Download Report CSV
                 with c_export:
-                    st.write("") # Padding agar sejajar
+                    st.write("") 
                     st.write("")
                     csv_data = df_filtered.to_csv(index=False).encode('utf-8')
                     st.download_button(label="📥 Download Laporan (CSV)", data=csv_data, file_name=f"Laporan_Holding_{filter_unit}_{st.session_state.start_date}.csv", mime="text/csv", use_container_width=True)
@@ -946,7 +946,7 @@ elif menu == "Maintenance Data":
 st.markdown("---")
 st.markdown(
     "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v5.3 | Proprietary of PT Panca Budi Idaman Tbk | Created with ❤️ for Raihan Subakti"
+    "ERP Purchasing System v5.4 | Proprietary of PT Panca Budi Idaman Tbk | Created with ❤️ for Raihan Subakti"
     "</p>", 
     unsafe_allow_html=True
 )
