@@ -1,7 +1,7 @@
 # ==============================================================================
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 4.0 (FULL HOLDING VERSION - Google Images Integration)
+# Versi: 4.2 (FULL HOLDING VERSION - Universal Image Rendering Fix)
 # ==============================================================================
 
 import streamlit as st
@@ -103,15 +103,10 @@ def parse_numeric(value):
     except: return None
 
 def process_image_url(url):
-    """Fungsi ajaib: Bisa memproses link G-Drive, dan juga menerima direct link internet biasa."""
     if not isinstance(url, str) or str(url).strip().lower() in ['nan', 'none', '']: return ""
     url_str = str(url).strip()
-    
-    # Kalau link dari G-Drive, konversi jadi link Thumbnail agar bisa dirender
     match = re.search(r'/d/([a-zA-Z0-9_-]+)', url_str)
     if match: return f"https://drive.google.com/thumbnail?id={match.group(1)}&sz=w800"
-    
-    # Kalau link dari internet / Google Image biasa, langsung kembalikan linknya
     return url_str
 
 def extract_code(text):
@@ -177,7 +172,7 @@ with st.sidebar:
         menu_title="", 
         options=["Pembersihan PO", "Pencarian Barang", "E-Catalog & Studio", "Database Vendor", "Dashboard Laporan", "Maintenance Data"],
         icons=["magic", "search", "images", "shop", "bar-chart-line", "tools"], 
-        default_index=0,
+        default_index=2,
         styles={
             "container": {"padding": "0!important", "background-color": "transparent"},
             "icon": {"color": "#64748B", "font-size": "18px"}, 
@@ -336,7 +331,7 @@ if menu == "Pembersihan PO":
 
         except Exception as e: st.error(f"Error Mesin: {e}")
 
-    # --- TAMPILAN TABEL REVIEW (SATPAM GAIB & DROP PENYUSUP) ---
+    # --- TAMPILAN TABEL REVIEW ---
     if 'holding_draft' in st.session_state:
         st.markdown("### ⚠️ TAHAP REVIEW HOLDING")
         st.info("💡 **INFO:** Centang kotak **❌ BUKAN SCOPE** untuk membuang barang yang bukan wewenang Anda (ATK, dll). Anda juga bisa mengetik `KATEGORI` untuk **⚠️ BARANG BARU**.")
@@ -360,17 +355,13 @@ if menu == "Pembersihan PO":
             if st.button("💾 KONFIRMASI: Simpan ke Dashboard Induk", type="primary", use_container_width=True):
                 try:
                     with st.spinner("Tembak data ke Google Sheets..."):
-                        # FILTER DATA: Buang yang dicentang "Bukan Scope"
                         df_to_save = edited_df[edited_df["❌ BUKAN SCOPE"] == False]
-                        
                         client = get_gspread_client()
                         sheet = client.open_by_key(SHEET_ID).get_worksheet_by_id(int(GID_DASHBOARD))
                         
                         data_to_push = []
                         for _, r in df_to_save.iterrows():
                             info = mapping_master.get(r['NAMA_BAKU'], {})
-                            
-                            # Satpam Gaib
                             if r['NAMA_BAKU'] != "⚠️ BARANG BARU":
                                 kat_final = info.get('KATEGORI', '-')
                                 det_kat_final = info.get('DETAIL KATEGORI', '-')
@@ -436,8 +427,10 @@ elif menu == "E-Catalog & Studio":
             for idx, (_, row) in enumerate(df_show.head(40).iterrows()): 
                 with cols[idx % 4]:
                     raw_link = str(row.get('LINK GAMBAR', '')).strip()
-                    img_url = process_image_url(raw_link) # Menggunakan fungsi pintar baru
+                    # PERBAIKAN: Fungsi proses universal
+                    img_url = process_image_url(raw_link) 
                     
+                    # PERBAIKAN: Hilangkan syarat harus "drive.google"
                     if img_url:
                         img_element = f"<img src='{img_url}' style='width:100%; height:160px; object-fit:contain; border-radius:8px; margin-bottom:12px;'>"
                     else:
@@ -455,7 +448,7 @@ elif menu == "E-Catalog & Studio":
 
     with t_studio:
         st.write("### 📸 Inject Image Asset")
-        st.info("💡 **TIPS BARU:** Anda sekarang **TIDAK HARUS** pakai Google Drive! Cukup cari gambar di Google, Klik Kanan -> **Copy Image Address** (Salin Alamat Gambar), lalu *Paste* di kotak bawah.")
+        st.info("💡 **TIPS BARU:** Anda sekarang **TIDAK HARUS** pakai Google Drive! Cukup cari gambar di Google, Klik Kanan foto aslinya -> **Copy Image Address** (Salin Alamat Gambar), lalu *Paste* di kotak bawah.")
         
         if 'LINK GAMBAR' not in df_master.columns: df_master['LINK GAMBAR'] = ""
             
@@ -466,8 +459,7 @@ elif menu == "E-Catalog & Studio":
         else:
             barang_pilih = st.selectbox("Pilih Produk yang Belum Ada Gambar:", df_no_pic['NAMA BAKU'].tolist())
             
-            # --- TOMBOL AJAIB PENCARIAN GOOGLE ---
-            query_google = urllib.parse.quote(barang_pilih + " alat industri sparepart")
+            query_google = urllib.parse.quote(barang_pilih + " industri sparepart")
             st.markdown(f"""
             <a href="https://www.google.com/search?tbm=isch&q={query_google}" target="_blank">
                 <button style="background-color:#4285F4; color:white; border:none; padding:8px 16px; border-radius:8px; cursor:pointer; font-weight:bold; margin-bottom:15px;">
@@ -478,23 +470,31 @@ elif menu == "E-Catalog & Studio":
 
             link_input = st.text_input("Paste Link Gambar (G-Drive ATAU Link Internet Bebas) di sini:")
             if link_input:
-                # Tampilkan Preview Gambar sebelum di-save
-                img_preview = process_image_url(link_input)
-                if img_preview: st.image(img_preview, width=300)
-                
-                if st.button("💾 Upload & Bind", type="primary"):
-                    try:
-                        with st.spinner("Binding asset..."):
-                            client = get_gspread_client(); sheet_master = client.open_by_key(SHEET_ID).get_worksheet(0)
-                            cell = sheet_master.find(barang_pilih, in_column=2)
-                            if cell:
-                                headers = sheet_master.row_values(1)
-                                if 'LINK GAMBAR' in headers:
-                                    col_link_idx = headers.index('LINK GAMBAR') + 1
-                                    sheet_master.update_cell(cell.row, col_link_idx, link_input)
-                                    st.success(f"Success!"); time.sleep(1); st.cache_data.clear(); st.rerun()
-                                else: st.error("Kolom 'LINK GAMBAR' belum ada di baris pertama Sheet 1 Anda.")
-                    except Exception as e: st.error(f"Error: {e}")
+                if "shopee.co.id/" in link_input and "cf.shopee.co.id" not in link_input:
+                    st.error("⚠️ Oops! Ini link Halaman Produk Shopee. Silakan kembali ke Google Images, klik kanan tepat di fotonya, lalu pilih 'Copy Image Address' (Salin Alamat Gambar).")
+                elif "tokopedia.com/" in link_input and "images.tokopedia.net" not in link_input:
+                    st.error("⚠️ Oops! Ini link Halaman Produk Tokopedia. Silakan kembali ke Google Images, klik kanan tepat di fotonya, lalu pilih 'Copy Image Address' (Salin Alamat Gambar).")
+                else:
+                    img_preview = process_image_url(link_input)
+                    if img_preview:
+                        try:
+                            st.image(img_preview, width=300)
+                            
+                            if st.button("💾 Upload & Bind", type="primary"):
+                                try:
+                                    with st.spinner("Binding asset..."):
+                                        client = get_gspread_client(); sheet_master = client.open_by_key(SHEET_ID).get_worksheet(0)
+                                        cell = sheet_master.find(barang_pilih, in_column=2)
+                                        if cell:
+                                            headers = sheet_master.row_values(1)
+                                            if 'LINK GAMBAR' in headers:
+                                                col_link_idx = headers.index('LINK GAMBAR') + 1
+                                                sheet_master.update_cell(cell.row, col_link_idx, link_input)
+                                                st.success(f"Success!"); time.sleep(1); st.cache_data.clear(); st.rerun()
+                                            else: st.error("Kolom 'LINK GAMBAR' belum ada di baris pertama Sheet 1 Anda.")
+                                except Exception as e: st.error(f"Error: {e}")
+                        except:
+                            st.warning("⚠️ Gambar gagal dimuat! Pastikan link yang dimasukkan berakhiran seperti .jpg / .png, atau link Google Drive yang valid.")
 
 # ==========================================
 # MENU 4: DATABASE VENDOR
@@ -785,7 +785,7 @@ elif menu == "Maintenance Data":
 st.markdown("---")
 st.markdown(
     "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v4.0 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
+    "ERP Purchasing System v4.2 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
     "</p>", 
     unsafe_allow_html=True
 )
