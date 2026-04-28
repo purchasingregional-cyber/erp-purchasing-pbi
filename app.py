@@ -2,7 +2,7 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 5.1 (ULTIMATE HOLDING VERSION + AI FORECASTING)
+# Versi: 5.2 (LUXURY EDITION - Custom UI Metrics & Dashboard Fix)
 # ==============================================================================
 
 import streamlit as st
@@ -23,7 +23,9 @@ import plotly.express as px
 # ==========================================
 st.set_page_config(layout="wide", page_title="ERP Holding Purchasing | Panca Budi", page_icon="🏢")
 
+# Menyuntikkan FontAwesome (Untuk Ikon Emas) & CSS Kustom
 st.markdown("""
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
     
@@ -32,19 +34,6 @@ st.markdown("""
     }
     
     .main { background-color: #F8FAFC; }
-    
-    .stMetric { 
-        padding: 24px; 
-        border-radius: 16px; 
-        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
-        border: 1px solid rgba(128, 128, 128, 0.2) !important;
-        background-color: transparent !important;
-        transition: transform 0.2s ease-in-out;
-    }
-    .stMetric:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
-    }
     
     .stTabs [data-baseweb="tab-list"] { gap: 24px; }
     .stTabs [data-baseweb="tab"] {
@@ -132,6 +121,16 @@ def generate_new_sku(prefix_val, kat_full, det_full, current_df):
         return f"{prefix}-{c_kat}-{c_det}-{next_val:03d}"
     except: return "000-000-000-001"
 
+# --- FUNGSI CUSTOM UI CARDS MEWAH ---
+def create_metric_card(icon_class, title, value):
+    return f"""
+    <div style="background-color:#FFFFFF; border:1px solid #E2E8F0; border-radius:12px; padding:20px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05); height:100%; display:flex; flex-direction:column; justify-content:center;">
+        <div><i class="{icon_class}" style="color:#D4AF37; font-size:28px; margin-bottom:12px;"></i></div>
+        <div style="color:#64748B; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">{title}</div>
+        <div style="color:#0F172A; font-size:22px; font-weight:800; line-height:1.3; word-wrap:break-word;">{value}</div>
+    </div>
+    """
+
 # ==========================================
 # 4. LOAD & PERSIAPAN MASTER DATA
 # ==========================================
@@ -173,7 +172,7 @@ with st.sidebar:
         menu_title="", 
         options=["Pembersihan PO", "Pencarian Barang", "E-Catalog & Studio", "Database Vendor", "Dashboard Laporan", "Maintenance Data"],
         icons=["magic", "search", "images", "shop", "bar-chart-line", "tools"], 
-        default_index=4, # Pindah ke Dashboard biar langsung bisa dicoba
+        default_index=4, 
         styles={
             "container": {"padding": "0!important", "background-color": "transparent"},
             "icon": {"color": "#64748B", "font-size": "18px"}, 
@@ -207,6 +206,7 @@ if menu == "Pembersihan PO":
             df_input = pd.read_excel(file_raw, header=None)
             extracted_rows = []
 
+            # --- 1. LOGIKA PLANT RA ---
             if "Plant RA" in pilihan_format:
                 st.info("🤖 Mesin Khusus RA memindai struktur kolom secara dinamis...")
                 curr_po, curr_tgl, curr_vendor = "-", "-", "-"
@@ -254,6 +254,7 @@ if menu == "Pembersihan PO":
                                     })
                 else: st.error("Gagal menemukan Header 'Nama Barang', 'Qty', dan 'Harga' pada file ini. Pastikan file RA asli.")
 
+            # --- 2. LOGIKA GABUNGAN (PGP, CEPER, PEMALANG) ---
             elif any(plant in pilihan_format for plant in ["PGP", "Ceper", "Pemalang"]):
                 if "PGP" in pilihan_format: detected_plant = "PGP"
                 elif "Ceper" in pilihan_format: detected_plant = "CEPER"
@@ -302,7 +303,6 @@ if menu == "Pembersihan PO":
                                 if v_str.upper() in ["RP", "USD", "EUR", "CNY", "IDR"]: continue
                                 
                                 v_clean = v_str.replace('\xa0', '').strip()
-                                
                                 if len(v_clean) >= 8 and " " not in v_clean and re.search(r'\d', v_clean):
                                     continue 
 
@@ -317,6 +317,7 @@ if menu == "Pembersihan PO":
                                 "MATA UANG": curr_money, "ITEM_KOTOR": item_name, "QTY": qty_val, "HARGA": prc_val
                             })
 
+            # --- 3. LOGIKA ERP PUSAT (LAMA) ---
             elif "ERP Pusat" in pilihan_format:
                 st.info("🤖 Mesin ERP Pusat sedang bekerja...")
                 curr_po, curr_tgl, curr_vendor, curr_money = "-", "-", "-", "RP"
@@ -362,6 +363,7 @@ if menu == "Pembersihan PO":
                                     "MATA UANG": curr_money, "ITEM_KOTOR": item_name, "QTY": nums[0], "HARGA": nums[-1]
                                 })
 
+            # --- AI MATCHING & DRAFT PREPARATION ---
             if extracted_rows:
                 st.success(f"✔️ Berhasil mengekstrak {len(extracted_rows)} baris data mentah yang valid.")
                 final_draft = []
@@ -637,10 +639,12 @@ elif menu == "Dashboard Laporan":
                 df_filtered = df_d[df_d[c_unit] == filter_unit] if filter_unit != "All Facilities" else df_d
                 
                 st.write("") 
+                # PERUBAHAN UI: Menggunakan Custom HTML Card
                 col1, col2, col3 = st.columns(3)
-                col1.metric("Total Procurement Value", format_rupiah(df_filtered['TOTAL'].sum()))
-                col2.metric("PO Transactions", f"{df_filtered[c_po].replace('', pd.NA).dropna().nunique()}")
-                col3.metric("Active Supply Facilities", f"{df_filtered[c_unit].nunique()}")
+                with col1: st.markdown(create_metric_card("fa-solid fa-sack-dollar", "Total Procurement Value", format_rupiah(df_filtered['TOTAL'].sum())), unsafe_allow_html=True)
+                with col2: st.markdown(create_metric_card("fa-solid fa-file-invoice", "PO Transactions", f"{df_filtered[c_po].replace('', pd.NA).dropna().nunique()}"), unsafe_allow_html=True)
+                with col3: st.markdown(create_metric_card("fa-solid fa-industry", "Active Supply Facilities", f"{df_filtered[c_unit].nunique()}"), unsafe_allow_html=True)
+                st.write("")
                 st.write("")
                 
                 c_a, c_b = st.columns([1, 1.5])
@@ -674,7 +678,7 @@ elif menu == "Dashboard Laporan":
                 if barang_pilih:
                     df_item_histori = df_d[df_d[c_baku].isin(barang_pilih)].sort_values(by='DATE_CLEAN')
 
-                    # --- MODE ANALISA 1 BARANG (DENGAN FORECASTING) ---
+                    # --- MODE ANALISA 1 BARANG ---
                     if len(barang_pilih) == 1:
                         item_tunggal = barang_pilih[0]
                         info_master = df_master[df_master['NAMA BAKU'] == item_tunggal].tail(1)
@@ -707,12 +711,14 @@ elif menu == "Dashboard Laporan":
                         st.markdown("<hr style='border:1px solid #E2E8F0; margin: 30px 0;'>", unsafe_allow_html=True)
                         
                         if not df_item_histori.empty:
+                            # PERUBAHAN UI: Custom HTML Card (4 Kolom)
                             m1, m2, m3, m4 = st.columns(4)
-                            m1.metric("Item TCO (Total Cost)", format_rupiah(df_item_histori['TOTAL'].sum()))
-                            m2.metric("Purchase Frequency", f"{df_item_histori[c_po].nunique()} Orders")
-                            m3.metric("Average Unit Price", format_rupiah(df_item_histori['H_NUM'].mean()))
-                            m4.metric("Supplier Count", f"{len(v_histori)} Vendors")
+                            with m1: st.markdown(create_metric_card("fa-solid fa-money-bill-wave", "Item TCO (Total Cost)", format_rupiah(df_item_histori['TOTAL'].sum())), unsafe_allow_html=True)
+                            with m2: st.markdown(create_metric_card("fa-solid fa-cart-shopping", "Purchase Frequency", f"{df_item_histori[c_po].nunique()} Orders"), unsafe_allow_html=True)
+                            with m3: st.markdown(create_metric_card("fa-solid fa-tag", "Average Unit Price", format_rupiah(df_item_histori['H_NUM'].mean())), unsafe_allow_html=True)
+                            with m4: st.markdown(create_metric_card("fa-solid fa-handshake", "Supplier Count", f"{len(v_histori)} Vendors"), unsafe_allow_html=True)
 
+                            st.write("")
                             st.write("")
                             g_harga, g_qty = st.columns(2)
                             with g_harga:
@@ -725,11 +731,9 @@ elif menu == "Dashboard Laporan":
                                 fig_qty.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', xaxis_title="", yaxis_title="Quantity")
                                 st.plotly_chart(fig_qty, use_container_width=True)
                             
-                            # ---> PENAMBAHAN FITUR: AI FORECASTING <---
                             st.markdown("<hr style='border:1px solid #E2E8F0; margin: 30px 0;'>", unsafe_allow_html=True)
                             st.markdown("<h3 style='color:#0F172A;'>🔮 AI Forecasting & Budget Projection</h3>", unsafe_allow_html=True)
                             
-                            # Hitung Rata-rata Pemakaian Bulanan (Hanya dari bulan yang ada transaksinya)
                             df_monthly_fc = df_item_histori.groupby(pd.Grouper(key='DATE_CLEAN', freq='ME'))['Q_NUM'].sum().reset_index()
                             if len(df_monthly_fc) >= 1:
                                 avg_qty_per_month = df_monthly_fc['Q_NUM'].mean()
@@ -738,10 +742,12 @@ elif menu == "Dashboard Laporan":
                                 
                                 uom = row_m.get('SATUAN', '-') if not info_master.empty else "Pcs"
                                 
+                                # PERUBAHAN UI: Custom HTML Card (3 Kolom)
                                 c_fc1, c_fc2, c_fc3 = st.columns(3)
-                                c_fc1.metric("Rata-rata Kebutuhan / Bulan", f"{avg_qty_per_month:.0f} {uom}")
-                                c_fc2.metric("Patokan Harga Terakhir", format_rupiah(latest_price))
-                                c_fc3.metric("Estimasi Budget Bulan Depan", format_rupiah(est_budget))
+                                with c_fc1: st.markdown(create_metric_card("fa-solid fa-chart-line", "Rata-rata Kebutuhan / Bulan", f"{avg_qty_per_month:.0f} {uom}"), unsafe_allow_html=True)
+                                with c_fc2: st.markdown(create_metric_card("fa-solid fa-tags", "Patokan Harga Terakhir", format_rupiah(latest_price)), unsafe_allow_html=True)
+                                with c_fc3: st.markdown(create_metric_card("fa-solid fa-vault", "Estimasi Budget Bulan Depan", format_rupiah(est_budget)), unsafe_allow_html=True)
+                                st.write("")
                                 
                                 vendor_saran = v_histori[:2] if len(v_histori) > 0 else ["Vendor Baru"]
                                 str_vendor = " atau ".join(vendor_saran)
@@ -749,7 +755,6 @@ elif menu == "Dashboard Laporan":
                                 st.info(f"💡 **Insight Manajerial:** Berdasarkan histori, Holding diperkirakan akan membutuhkan sekitar **{avg_qty_per_month:.0f} {uom}** untuk item **{item_tunggal}** di bulan depan. Siapkan budget sekitar **{format_rupiah(est_budget)}** dan pertimbangkan untuk langsung melakukan negosiasi kuantiti bulanan dengan **{str_vendor}** untuk mendapatkan harga terbaik.")
                             else:
                                 st.warning("Data histori belum cukup untuk melakukan kalkulasi Forecasting.")
-                            # -------------------------------------------
 
                             st.markdown("<br><h4 style='font-size:16px; color:#334155; margin-bottom:10px;'>Transaction Ledger</h4>", unsafe_allow_html=True)
                             df_table = df_item_histori[[c_tgl, c_po, c_unit, 'VENDOR', 'QTY', 'H_NUM', 'TOTAL']].copy()
@@ -757,18 +762,20 @@ elif menu == "Dashboard Laporan":
                             df_table['TOTAL'] = df_table['TOTAL'].map(format_rupiah)
                             st.dataframe(df_table, use_container_width=True, hide_index=True)
 
-                    # --- MODE ANALISA MULTI-BARANG (PERBANDINGAN) ---
+                    # --- MODE ANALISA MULTI-BARANG ---
                     else:
                         st.markdown("<br><h3>⚖️ Multi-Item Comparative Analysis</h3>", unsafe_allow_html=True)
                         st.markdown("<hr style='border:1px solid #E2E8F0; margin: 10px 0 20px 0;'>", unsafe_allow_html=True)
                         
                         if not df_item_histori.empty:
+                            # PERUBAHAN UI: Custom HTML Card (4 Kolom)
                             m1, m2, m3, m4 = st.columns(4)
-                            m1.metric("Combined TCO", format_rupiah(df_item_histori['TOTAL'].sum()))
-                            m2.metric("Total Transactions", f"{df_item_histori[c_po].nunique()} Orders")
-                            m3.metric("Items Compared", f"{len(barang_pilih)} Items")
-                            m4.metric("Total Vendors Involved", f"{df_item_histori['VENDOR'].nunique()} Vendors")
+                            with m1: st.markdown(create_metric_card("fa-solid fa-coins", "Combined TCO", format_rupiah(df_item_histori['TOTAL'].sum())), unsafe_allow_html=True)
+                            with m2: st.markdown(create_metric_card("fa-solid fa-cart-flatbed", "Total Transactions", f"{df_item_histori[c_po].nunique()} Orders"), unsafe_allow_html=True)
+                            with m3: st.markdown(create_metric_card("fa-solid fa-boxes-stacked", "Items Compared", f"{len(barang_pilih)} Items"), unsafe_allow_html=True)
+                            with m4: st.markdown(create_metric_card("fa-solid fa-users", "Total Vendors Involved", f"{df_item_histori['VENDOR'].nunique()} Vendors"), unsafe_allow_html=True)
 
+                            st.write("")
                             st.write("")
                             g_harga, g_qty = st.columns(2)
                             with g_harga:
@@ -894,7 +901,7 @@ elif menu == "Maintenance Data":
 st.markdown("---")
 st.markdown(
     "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v5.1 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
+    "ERP Purchasing System v5.2 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
     "</p>", 
     unsafe_allow_html=True
 )
