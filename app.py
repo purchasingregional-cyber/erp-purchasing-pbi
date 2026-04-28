@@ -2,7 +2,7 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 5.0 (ULTIMATE HOLDING VERSION - All Plants Integrated)
+# Versi: 5.1 (ULTIMATE HOLDING VERSION + AI FORECASTING)
 # ==============================================================================
 
 import streamlit as st
@@ -173,7 +173,7 @@ with st.sidebar:
         menu_title="", 
         options=["Pembersihan PO", "Pencarian Barang", "E-Catalog & Studio", "Database Vendor", "Dashboard Laporan", "Maintenance Data"],
         icons=["magic", "search", "images", "shop", "bar-chart-line", "tools"], 
-        default_index=0,
+        default_index=4, # Pindah ke Dashboard biar langsung bisa dicoba
         styles={
             "container": {"padding": "0!important", "background-color": "transparent"},
             "icon": {"color": "#64748B", "font-size": "18px"}, 
@@ -191,7 +191,6 @@ if menu == "Pembersihan PO":
     
     col_sel, col_empty = st.columns([1.5, 1])
     with col_sel:
-        # FULL INTEGRATION: RA, PGP, CEPER, PEMALANG, PUSAT
         pilihan_format = st.selectbox("🏢 Pilih Asal Laporan / Format Pabrik:", 
                                      ["Plant RA (ra pembelian.xls)", 
                                       "Plant PGP (Laporan PO per Bukti)", 
@@ -208,7 +207,6 @@ if menu == "Pembersihan PO":
             df_input = pd.read_excel(file_raw, header=None)
             extracted_rows = []
 
-            # --- 1. LOGIKA PLANT RA ---
             if "Plant RA" in pilihan_format:
                 st.info("🤖 Mesin Khusus RA memindai struktur kolom secara dinamis...")
                 curr_po, curr_tgl, curr_vendor = "-", "-", "-"
@@ -256,9 +254,7 @@ if menu == "Pembersihan PO":
                                     })
                 else: st.error("Gagal menemukan Header 'Nama Barang', 'Qty', dan 'Harga' pada file ini. Pastikan file RA asli.")
 
-            # --- 2. LOGIKA GABUNGAN (PGP, CEPER, PEMALANG) ---
             elif any(plant in pilihan_format for plant in ["PGP", "Ceper", "Pemalang"]):
-                # Tentukan nama unit kerja dari dropdown yang dipilih Bosku
                 if "PGP" in pilihan_format: detected_plant = "PGP"
                 elif "Ceper" in pilihan_format: detected_plant = "CEPER"
                 else: detected_plant = "PEMALANG"
@@ -274,7 +270,6 @@ if menu == "Pembersihan PO":
 
                     if any(x in line_text for x in ["SUBTOTAL", "GRAND TOTAL", "LAPORAN PO", "NO TRANS"]): continue
 
-                    # HEADER: Cari tulisan INCLUDE/EXCLUDE
                     if "INCLUDE" in line_text or "EXCLUDE" in line_text:
                         curr_po = val_list[0]
                         for c in val_list: 
@@ -287,20 +282,17 @@ if menu == "Pembersihan PO":
                         else:
                             curr_vendor = "CASH / TANPA NAMA"
                             
-                        # Dukungan Multi-Currency
                         curr_money = "RP"
                         for m in ["USD", "EUR", "CNY", "JPY"]:
                             if m in line_text: curr_money = m; break
                         continue
                         
-                    # DETAIL ITEM
                     if curr_po != "-":
                         nums = []
                         for v in val_list:
                             n = parse_numeric(v)
                             if n is not None: nums.append(n)
                         
-                        # Baris item punya minimal 2 angka (Qty1/2 dan Harga)
                         if len(nums) >= 2:
                             names = []
                             for v in val_list:
@@ -309,21 +301,15 @@ if menu == "Pembersihan PO":
                                 if re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', v_str): continue
                                 if v_str.upper() in ["RP", "USD", "EUR", "CNY", "IDR"]: continue
                                 
-                                # ---> GENERAL SUPER FILTER (PGP, CEPER, PEMALANG) <---
                                 v_clean = v_str.replace('\xa0', '').strip()
                                 
-                                # Buang kode seperti PGPPR2603-015, PBIMK2504-0026R, atau 075/XII/2024
-                                # Ciri-ciri: panjang >= 8, ada angka, dan tidak ada spasi sama sekali di dalamnya
                                 if len(v_clean) >= 8 and " " not in v_clean and re.search(r'\d', v_clean):
                                     continue 
 
                                 names.append(v_str)
                             
                             item_name = max(names, key=len) if names else "Unknown"
-                            
-                            # Logika Quantiy Laporan PO Per Bukti: Qty2 adalah qty utama (index 1)
                             qty_val = nums[1] if len(nums) > 1 else nums[0]
-                            # Harga satuan ada di index setelahnya
                             prc_val = nums[2] if len(nums) > 2 else 0.0
                             
                             extracted_rows.append({
@@ -331,7 +317,6 @@ if menu == "Pembersihan PO":
                                 "MATA UANG": curr_money, "ITEM_KOTOR": item_name, "QTY": qty_val, "HARGA": prc_val
                             })
 
-            # --- 3. LOGIKA ERP PUSAT (LAMA) ---
             elif "ERP Pusat" in pilihan_format:
                 st.info("🤖 Mesin ERP Pusat sedang bekerja...")
                 curr_po, curr_tgl, curr_vendor, curr_money = "-", "-", "-", "RP"
@@ -377,7 +362,6 @@ if menu == "Pembersihan PO":
                                     "MATA UANG": curr_money, "ITEM_KOTOR": item_name, "QTY": nums[0], "HARGA": nums[-1]
                                 })
 
-            # --- AI MATCHING & DRAFT PREPARATION ---
             if extracted_rows:
                 st.success(f"✔️ Berhasil mengekstrak {len(extracted_rows)} baris data mentah yang valid.")
                 final_draft = []
@@ -412,7 +396,6 @@ if menu == "Pembersihan PO":
 
         except Exception as e: st.error(f"Error Mesin: {e}")
 
-    # --- TAMPILAN TABEL REVIEW (SATPAM GAIB & DROP PENYUSUP) ---
     if 'holding_draft' in st.session_state:
         st.markdown("### ⚠️ TAHAP REVIEW HOLDING")
         st.info("💡 **INFO:** Centang kotak **❌ BUKAN SCOPE** untuk membuang barang yang bukan wewenang Anda (ATK, dll). Anda juga bisa mengetik `KATEGORI` untuk **⚠️ BARANG BARU**.")
@@ -623,7 +606,7 @@ elif menu == "Database Vendor":
 # MENU 5: DASHBOARD LAPORAN (MULTI-ITEM COMPARISON)
 # ==========================================
 elif menu == "Dashboard Laporan":
-    st.markdown("<h2>📊 Procurement Intelligence</h2>", unsafe_allow_html=True)
+    st.markdown("<h2>📊 Procurement Intelligence & Forecasting</h2>", unsafe_allow_html=True)
     
     try:
         client = get_gspread_client()
@@ -646,7 +629,7 @@ elif menu == "Dashboard Laporan":
             df_d['DATE_CLEAN'] = pd.to_datetime(df_d[c_tgl], errors='coerce')
             df_d = df_d.dropna(subset=['DATE_CLEAN'])
             
-            tab_summary, tab_item = st.tabs(["🌐 Corporate Overview", "🔎 Item Analytics (Multi-Select)"])
+            tab_summary, tab_item = st.tabs(["🌐 Corporate Overview", "🔎 Item Analytics & AI Forecast"])
             
             with tab_summary:
                 list_unit = ["All Facilities"] + sorted([u for u in df_d[c_unit].unique() if str(u).strip() != ""])
@@ -691,6 +674,7 @@ elif menu == "Dashboard Laporan":
                 if barang_pilih:
                     df_item_histori = df_d[df_d[c_baku].isin(barang_pilih)].sort_values(by='DATE_CLEAN')
 
+                    # --- MODE ANALISA 1 BARANG (DENGAN FORECASTING) ---
                     if len(barang_pilih) == 1:
                         item_tunggal = barang_pilih[0]
                         info_master = df_master[df_master['NAMA BAKU'] == item_tunggal].tail(1)
@@ -741,12 +725,39 @@ elif menu == "Dashboard Laporan":
                                 fig_qty.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', xaxis_title="", yaxis_title="Quantity")
                                 st.plotly_chart(fig_qty, use_container_width=True)
                             
-                            st.markdown("<h4 style='font-size:16px; color:#334155; margin-bottom:10px;'>Transaction Ledger</h4>", unsafe_allow_html=True)
+                            # ---> PENAMBAHAN FITUR: AI FORECASTING <---
+                            st.markdown("<hr style='border:1px solid #E2E8F0; margin: 30px 0;'>", unsafe_allow_html=True)
+                            st.markdown("<h3 style='color:#0F172A;'>🔮 AI Forecasting & Budget Projection</h3>", unsafe_allow_html=True)
+                            
+                            # Hitung Rata-rata Pemakaian Bulanan (Hanya dari bulan yang ada transaksinya)
+                            df_monthly_fc = df_item_histori.groupby(pd.Grouper(key='DATE_CLEAN', freq='ME'))['Q_NUM'].sum().reset_index()
+                            if len(df_monthly_fc) >= 1:
+                                avg_qty_per_month = df_monthly_fc['Q_NUM'].mean()
+                                latest_price = df_item_histori.sort_values(by='DATE_CLEAN').iloc[-1]['H_NUM']
+                                est_budget = avg_qty_per_month * latest_price
+                                
+                                uom = row_m.get('SATUAN', '-') if not info_master.empty else "Pcs"
+                                
+                                c_fc1, c_fc2, c_fc3 = st.columns(3)
+                                c_fc1.metric("Rata-rata Kebutuhan / Bulan", f"{avg_qty_per_month:.0f} {uom}")
+                                c_fc2.metric("Patokan Harga Terakhir", format_rupiah(latest_price))
+                                c_fc3.metric("Estimasi Budget Bulan Depan", format_rupiah(est_budget))
+                                
+                                vendor_saran = v_histori[:2] if len(v_histori) > 0 else ["Vendor Baru"]
+                                str_vendor = " atau ".join(vendor_saran)
+                                
+                                st.info(f"💡 **Insight Manajerial:** Berdasarkan histori, Holding diperkirakan akan membutuhkan sekitar **{avg_qty_per_month:.0f} {uom}** untuk item **{item_tunggal}** di bulan depan. Siapkan budget sekitar **{format_rupiah(est_budget)}** dan pertimbangkan untuk langsung melakukan negosiasi kuantiti bulanan dengan **{str_vendor}** untuk mendapatkan harga terbaik.")
+                            else:
+                                st.warning("Data histori belum cukup untuk melakukan kalkulasi Forecasting.")
+                            # -------------------------------------------
+
+                            st.markdown("<br><h4 style='font-size:16px; color:#334155; margin-bottom:10px;'>Transaction Ledger</h4>", unsafe_allow_html=True)
                             df_table = df_item_histori[[c_tgl, c_po, c_unit, 'VENDOR', 'QTY', 'H_NUM', 'TOTAL']].copy()
                             df_table['H_NUM'] = df_table['H_NUM'].map(format_rupiah)
                             df_table['TOTAL'] = df_table['TOTAL'].map(format_rupiah)
                             st.dataframe(df_table, use_container_width=True, hide_index=True)
 
+                    # --- MODE ANALISA MULTI-BARANG (PERBANDINGAN) ---
                     else:
                         st.markdown("<br><h3>⚖️ Multi-Item Comparative Analysis</h3>", unsafe_allow_html=True)
                         st.markdown("<hr style='border:1px solid #E2E8F0; margin: 10px 0 20px 0;'>", unsafe_allow_html=True)
@@ -845,7 +856,7 @@ elif menu == "Maintenance Data":
             col1, col2 = st.columns(2)
             with col1:
                 if st.button("💾 Konfirmasi & Tembak ke Master Data", type="primary", use_container_width=True):
-                    with st.spinner("Menyimpan ke Google Sheets..."):
+                    with st.spinner("Menimpa ke Google Sheets..."):
                         try:
                             df_full = st.session_state['draft_sku_df']
                             c_s = next((c for c in df_full.columns if 'SKU' in c), None)
@@ -883,7 +894,7 @@ elif menu == "Maintenance Data":
 st.markdown("---")
 st.markdown(
     "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v5.0 | Proprietary of PT Panca Budi Idaman Tbk | Created with ❤️ for Raihan Subakti"
+    "ERP Purchasing System v5.1 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
     "</p>", 
     unsafe_allow_html=True
 )
