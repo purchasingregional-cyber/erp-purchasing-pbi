@@ -1,7 +1,7 @@
 # ==============================================================================
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 4.3 (FULL HOLDING VERSION - Fix Streamlit Rerun Bug)
+# Versi: 4.4 (FULL HOLDING VERSION - Update/Overwrite Existing Images)
 # ==============================================================================
 
 import streamlit as st
@@ -441,22 +441,34 @@ elif menu == "E-Catalog & Studio":
                     st.markdown(card_html, unsafe_allow_html=True)
 
     with t_studio:
-        st.write("### 📸 Inject Image Asset")
-        st.info("💡 **TIPS BARU:** Anda sekarang **TIDAK HARUS** pakai Google Drive! Cukup cari gambar di Google, Klik Kanan foto aslinya -> **Copy Image Address** (Salin Alamat Gambar), lalu *Paste* di kotak bawah.")
+        st.write("### 📸 Inject / Update Image Asset")
+        st.info("💡 **TIPS BARU:** Anda bisa mengisi gambar barang baru, ATAU **menimpa gambar barang yang sudah ada** jika salah. Cari gambar di Google, Klik Kanan -> **Copy Image Address** -> Paste di kotak bawah.")
         
         if 'LINK GAMBAR' not in df_master.columns: df_master['LINK GAMBAR'] = ""
-            
-        empty_mask = df_master['LINK GAMBAR'].isna() | df_master['LINK GAMBAR'].astype(str).str.strip().str.lower().isin(['', 'nan', 'none'])
-        df_no_pic = df_master.drop_duplicates(subset=['NAMA BAKU'], keep='last')[empty_mask]
         
-        if df_no_pic.empty: st.success("Semua aset visual sudah lengkap.")
+        # PERBAIKAN V4.4: Tampilkan semua barang (unik) di dropdown, bukan cuma yang kosong
+        all_unique_items = df_master.drop_duplicates(subset=['NAMA BAKU'], keep='last')['NAMA BAKU'].tolist()
+        
+        if not all_unique_items: st.success("Database Kosong.")
         else:
-            barang_pilih = st.selectbox("Pilih Produk yang Belum Ada Gambar:", df_no_pic['NAMA BAKU'].tolist())
+            barang_pilih = st.selectbox("Ketik Nama Produk yang Mau Diubah/Ditambah Gambarnya:", all_unique_items)
             
+            # --- TAMPILKAN STATUS GAMBAR SAAT INI ---
+            current_row = df_master[df_master['NAMA BAKU'] == barang_pilih].iloc[-1]
+            current_link = str(current_row.get('LINK GAMBAR', '')).strip()
+            
+            if current_link and current_link.lower() not in ['nan', 'none', '']:
+                st.warning("⚠️ **Barang ini sudah memiliki gambar.** Jika Anda meng-upload link baru, gambar lama akan ditimpa (overwrite).")
+                curr_preview = process_image_url(current_link)
+                if curr_preview:
+                    st.image(curr_preview, width=150, caption="Preview Gambar Saat Ini")
+            else:
+                st.success("✅ Barang ini belum memiliki gambar. Silakan upload.")
+
             query_google = urllib.parse.quote(barang_pilih + " industri sparepart")
             st.markdown(f"""
             <a href="https://www.google.com/search?tbm=isch&q={query_google}" target="_blank">
-                <button style="background-color:#4285F4; color:white; border:none; padding:8px 16px; border-radius:8px; cursor:pointer; font-weight:bold; margin-bottom:15px;">
+                <button style="background-color:#4285F4; color:white; border:none; padding:8px 16px; border-radius:8px; cursor:pointer; font-weight:bold; margin-bottom:15px; margin-top:10px;">
                     🔍 Buka Google Images untuk "{barang_pilih}"
                 </button>
             </a>
@@ -473,15 +485,15 @@ elif menu == "E-Catalog & Studio":
                     if img_preview:
                         is_valid = True
                         try:
-                            st.image(img_preview, width=300)
+                            st.image(img_preview, width=300, caption="Preview Gambar BARU")
                         except Exception:
                             st.warning("⚠️ Gambar gagal dimuat! Pastikan link yang dimasukkan berakhiran seperti .jpg / .png, atau link Google Drive yang valid.")
                             is_valid = False
                             
                         if is_valid:
-                            if st.button("💾 Upload & Bind", type="primary"):
+                            if st.button("💾 Upload / Update Gambar", type="primary"):
                                 try:
-                                    with st.spinner("Binding asset..."):
+                                    with st.spinner("Menimpa gambar ke database..."):
                                         client = get_gspread_client()
                                         sheet_master = client.open_by_key(SHEET_ID).get_worksheet(0)
                                         cell = sheet_master.find(barang_pilih, in_column=2)
@@ -490,7 +502,7 @@ elif menu == "E-Catalog & Studio":
                                             if 'LINK GAMBAR' in headers:
                                                 col_link_idx = headers.index('LINK GAMBAR') + 1
                                                 sheet_master.update_cell(cell.row, col_link_idx, link_input)
-                                                st.success("Success!")
+                                                st.success("✅ Success! Gambar berhasil diperbarui.")
                                                 time.sleep(1)
                                                 st.cache_data.clear()
                                                 st.rerun()
@@ -788,7 +800,7 @@ elif menu == "Maintenance Data":
 st.markdown("---")
 st.markdown(
     "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v4.3 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
+    "ERP Purchasing System v4.4 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
     "</p>", 
     unsafe_allow_html=True
 )
