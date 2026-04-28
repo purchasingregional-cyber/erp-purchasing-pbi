@@ -1,7 +1,7 @@
 # ==============================================================================
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 4.2 (FULL HOLDING VERSION - Universal Image Rendering Fix)
+# Versi: 4.3 (FULL HOLDING VERSION - Fix Streamlit Rerun Bug)
 # ==============================================================================
 
 import streamlit as st
@@ -202,7 +202,6 @@ if menu == "Pembersihan PO":
             df_input = pd.read_excel(file_raw, header=None)
             extracted_rows = []
 
-            # --- LOGIKA MESIN CERDAS PLANT RA ---
             if "Plant RA" in pilihan_format:
                 st.info("🤖 Mesin Khusus RA memindai struktur kolom secara dinamis...")
                 curr_po, curr_tgl, curr_vendor = "-", "-", "-"
@@ -250,7 +249,6 @@ if menu == "Pembersihan PO":
                                     })
                 else: st.error("Gagal menemukan Header 'Nama Barang', 'Qty', dan 'Harga' pada file ini. Pastikan file RA asli.")
 
-            # --- LOGIKA ERP PUSAT (LAMA) ---
             elif "ERP Pusat" in pilihan_format:
                 st.info("🤖 Mesin ERP Pusat sedang bekerja...")
                 curr_po, curr_tgl, curr_vendor, curr_money = "-", "-", "-", "RP"
@@ -296,7 +294,6 @@ if menu == "Pembersihan PO":
                                     "MATA UANG": curr_money, "ITEM_KOTOR": item_name, "QTY": nums[0], "HARGA": nums[-1]
                                 })
 
-            # --- AI MATCHING & DRAFT PREPARATION ---
             if extracted_rows:
                 st.success(f"✔️ Berhasil mengekstrak {len(extracted_rows)} baris data mentah yang valid.")
                 final_draft = []
@@ -331,7 +328,6 @@ if menu == "Pembersihan PO":
 
         except Exception as e: st.error(f"Error Mesin: {e}")
 
-    # --- TAMPILAN TABEL REVIEW ---
     if 'holding_draft' in st.session_state:
         st.markdown("### ⚠️ TAHAP REVIEW HOLDING")
         st.info("💡 **INFO:** Centang kotak **❌ BUKAN SCOPE** untuk membuang barang yang bukan wewenang Anda (ATK, dll). Anda juga bisa mengetik `KATEGORI` untuk **⚠️ BARANG BARU**.")
@@ -427,10 +423,8 @@ elif menu == "E-Catalog & Studio":
             for idx, (_, row) in enumerate(df_show.head(40).iterrows()): 
                 with cols[idx % 4]:
                     raw_link = str(row.get('LINK GAMBAR', '')).strip()
-                    # PERBAIKAN: Fungsi proses universal
                     img_url = process_image_url(raw_link) 
                     
-                    # PERBAIKAN: Hilangkan syarat harus "drive.google"
                     if img_url:
                         img_element = f"<img src='{img_url}' style='width:100%; height:160px; object-fit:contain; border-radius:8px; margin-bottom:12px;'>"
                     else:
@@ -477,24 +471,33 @@ elif menu == "E-Catalog & Studio":
                 else:
                     img_preview = process_image_url(link_input)
                     if img_preview:
+                        is_valid = True
                         try:
                             st.image(img_preview, width=300)
+                        except Exception:
+                            st.warning("⚠️ Gambar gagal dimuat! Pastikan link yang dimasukkan berakhiran seperti .jpg / .png, atau link Google Drive yang valid.")
+                            is_valid = False
                             
+                        if is_valid:
                             if st.button("💾 Upload & Bind", type="primary"):
                                 try:
                                     with st.spinner("Binding asset..."):
-                                        client = get_gspread_client(); sheet_master = client.open_by_key(SHEET_ID).get_worksheet(0)
+                                        client = get_gspread_client()
+                                        sheet_master = client.open_by_key(SHEET_ID).get_worksheet(0)
                                         cell = sheet_master.find(barang_pilih, in_column=2)
                                         if cell:
                                             headers = sheet_master.row_values(1)
                                             if 'LINK GAMBAR' in headers:
                                                 col_link_idx = headers.index('LINK GAMBAR') + 1
                                                 sheet_master.update_cell(cell.row, col_link_idx, link_input)
-                                                st.success(f"Success!"); time.sleep(1); st.cache_data.clear(); st.rerun()
-                                            else: st.error("Kolom 'LINK GAMBAR' belum ada di baris pertama Sheet 1 Anda.")
-                                except Exception as e: st.error(f"Error: {e}")
-                        except:
-                            st.warning("⚠️ Gambar gagal dimuat! Pastikan link yang dimasukkan berakhiran seperti .jpg / .png, atau link Google Drive yang valid.")
+                                                st.success("Success!")
+                                                time.sleep(1)
+                                                st.cache_data.clear()
+                                                st.rerun()
+                                            else:
+                                                st.error("Kolom 'LINK GAMBAR' belum ada di baris pertama Sheet 1 Anda.")
+                                except Exception as e:
+                                    st.error(f"Error: {e}")
 
 # ==========================================
 # MENU 4: DATABASE VENDOR
@@ -785,7 +788,7 @@ elif menu == "Maintenance Data":
 st.markdown("---")
 st.markdown(
     "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v4.2 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
+    "ERP Purchasing System v4.3 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
     "</p>", 
     unsafe_allow_html=True
 )
