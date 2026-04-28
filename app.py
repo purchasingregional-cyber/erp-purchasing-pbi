@@ -1,8 +1,7 @@
 # ==============================================================================
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
-# Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 3.9 (FULL HOLDING VERSION - Out of Scope Filter / Delete Row)
+# Versi: 4.0 (FULL HOLDING VERSION - Google Images Integration)
 # ==============================================================================
 
 import streamlit as st
@@ -12,6 +11,7 @@ import io
 import time
 import json
 import re
+import urllib.parse
 import gspread
 from google.oauth2.service_account import Credentials
 from streamlit_option_menu import option_menu
@@ -102,11 +102,17 @@ def parse_numeric(value):
         return float(s_clean)
     except: return None
 
-def convert_gdrive_link(url):
+def process_image_url(url):
+    """Fungsi ajaib: Bisa memproses link G-Drive, dan juga menerima direct link internet biasa."""
     if not isinstance(url, str) or str(url).strip().lower() in ['nan', 'none', '']: return ""
-    match = re.search(r'/d/([a-zA-Z0-9_-]+)', str(url))
+    url_str = str(url).strip()
+    
+    # Kalau link dari G-Drive, konversi jadi link Thumbnail agar bisa dirender
+    match = re.search(r'/d/([a-zA-Z0-9_-]+)', url_str)
     if match: return f"https://drive.google.com/thumbnail?id={match.group(1)}&sz=w800"
-    return str(url)
+    
+    # Kalau link dari internet / Google Image biasa, langsung kembalikan linknya
+    return url_str
 
 def extract_code(text):
     try: return text.split('(')[1].split(')')[0].strip().zfill(3) 
@@ -303,7 +309,6 @@ if menu == "Pembersihan PO":
                     match = process.extractOne(str(r['ITEM_KOTOR']).upper(), search_list, scorer=fuzz.token_set_ratio)
                     if match and match[1] >= 75:
                         baku = lookup_to_baku_map[match[0]]; info = mapping_master.get(baku, {})
-                        # TAMBAHAN KOLOM "❌ BUKAN SCOPE" (Opsi 2)
                         final_draft.append({
                             "❌ BUKAN SCOPE": False,
                             "UNIT": r['UNIT KERJA'], "PO": r['NO PO'], "TANGGAL": r['TANGGAL'], 
@@ -411,7 +416,7 @@ elif menu == "Pencarian Barang":
 # ==========================================
 elif menu == "E-Catalog & Studio":
     st.markdown("<h2>🖼️ Enterprise Digital Catalog</h2>", unsafe_allow_html=True)
-    t_cat, t_studio = st.tabs(["📖 Product Gallery", "🛠️ Asset Studio"])
+    t_cat, t_studio = st.tabs(["📖 Product Gallery", "🛠️ Asset Studio (Update Gambar)"])
     
     with t_cat:
         col_s, col_f = st.columns([2, 1])
@@ -431,9 +436,9 @@ elif menu == "E-Catalog & Studio":
             for idx, (_, row) in enumerate(df_show.head(40).iterrows()): 
                 with cols[idx % 4]:
                     raw_link = str(row.get('LINK GAMBAR', '')).strip()
-                    img_url = convert_gdrive_link(raw_link)
+                    img_url = process_image_url(raw_link) # Menggunakan fungsi pintar baru
                     
-                    if img_url and "drive.google" in img_url:
+                    if img_url:
                         img_element = f"<img src='{img_url}' style='width:100%; height:160px; object-fit:contain; border-radius:8px; margin-bottom:12px;'>"
                     else:
                         img_element = f"<div style='background-color:#F1F5F9; height:160px; border-radius:8px; display:flex; align-items:center; justify-content:center; margin-bottom:12px;'><span style='color:#94A3B8; font-weight:600;'>No Image Asset</span></div>"
@@ -450,6 +455,8 @@ elif menu == "E-Catalog & Studio":
 
     with t_studio:
         st.write("### 📸 Inject Image Asset")
+        st.info("💡 **TIPS BARU:** Anda sekarang **TIDAK HARUS** pakai Google Drive! Cukup cari gambar di Google, Klik Kanan -> **Copy Image Address** (Salin Alamat Gambar), lalu *Paste* di kotak bawah.")
+        
         if 'LINK GAMBAR' not in df_master.columns: df_master['LINK GAMBAR'] = ""
             
         empty_mask = df_master['LINK GAMBAR'].isna() | df_master['LINK GAMBAR'].astype(str).str.strip().str.lower().isin(['', 'nan', 'none'])
@@ -457,10 +464,24 @@ elif menu == "E-Catalog & Studio":
         
         if df_no_pic.empty: st.success("Semua aset visual sudah lengkap.")
         else:
-            barang_pilih = st.selectbox("Pilih Produk:", df_no_pic['NAMA BAKU'].tolist())
-            link_input = st.text_input("G-Drive Link:")
+            barang_pilih = st.selectbox("Pilih Produk yang Belum Ada Gambar:", df_no_pic['NAMA BAKU'].tolist())
+            
+            # --- TOMBOL AJAIB PENCARIAN GOOGLE ---
+            query_google = urllib.parse.quote(barang_pilih + " alat industri sparepart")
+            st.markdown(f"""
+            <a href="https://www.google.com/search?tbm=isch&q={query_google}" target="_blank">
+                <button style="background-color:#4285F4; color:white; border:none; padding:8px 16px; border-radius:8px; cursor:pointer; font-weight:bold; margin-bottom:15px;">
+                    🔍 Buka Google Images untuk "{barang_pilih}"
+                </button>
+            </a>
+            """, unsafe_allow_html=True)
+
+            link_input = st.text_input("Paste Link Gambar (G-Drive ATAU Link Internet Bebas) di sini:")
             if link_input:
-                st.image(convert_gdrive_link(link_input), width=300)
+                # Tampilkan Preview Gambar sebelum di-save
+                img_preview = process_image_url(link_input)
+                if img_preview: st.image(img_preview, width=300)
+                
                 if st.button("💾 Upload & Bind", type="primary"):
                     try:
                         with st.spinner("Binding asset..."):
@@ -588,7 +609,7 @@ elif menu == "Dashboard Laporan":
                         c_img, c_meta = st.columns([1, 2.5])
                         with c_img:
                             if not info_master.empty:
-                                img_url = convert_gdrive_link(str(info_master.iloc[0].get('LINK GAMBAR', '')).strip())
+                                img_url = process_image_url(str(info_master.iloc[0].get('LINK GAMBAR', '')).strip())
                                 if img_url: st.markdown(f"<div style='border:1px solid #E2E8F0; border-radius:12px; padding:10px; background:white;'><img src='{img_url}' width='100%' style='border-radius:8px;'></div>", unsafe_allow_html=True)
                                 else: st.info("🚫 No Asset")
                         with c_meta:
@@ -764,7 +785,7 @@ elif menu == "Maintenance Data":
 st.markdown("---")
 st.markdown(
     "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v3.9 | Proprietary of PT Panca Budi Idaman Tbk | Created with ❤️ for Raihan Subakti"
+    "ERP Purchasing System v4.0 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
     "</p>", 
     unsafe_allow_html=True
 )
