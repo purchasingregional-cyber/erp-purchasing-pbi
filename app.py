@@ -2,7 +2,7 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 4.7 (FULL HOLDING VERSION - Pembasmi Spasi Ghaib PGP)
+# Versi: 4.9 (FULL HOLDING VERSION - Pisah Menu PGP & Ceper)
 # ==============================================================================
 
 import streamlit as st
@@ -191,8 +191,13 @@ if menu == "Pembersihan PO":
     
     col_sel, col_empty = st.columns([1.5, 1])
     with col_sel:
+        # PERUBAHAN V4.9: Pisahkan PGP dan Ceper agar user tidak bingung
         pilihan_format = st.selectbox("🏢 Pilih Asal Laporan / Format Pabrik:", 
-                                     ["Plant RA (ra pembelian.xls)", "Plant PGP (Laporan PO per Bukti)", "ERP Pusat (Include/Exclude)", "Format Ceper (Coming Soon)", "Format Pemalang (Coming Soon)"])
+                                     ["Plant RA (ra pembelian.xls)", 
+                                      "Plant PGP (Laporan PO per Bukti)", 
+                                      "Plant Ceper (Laporan PO per Bukti)", 
+                                      "ERP Pusat (Include/Exclude)", 
+                                      "Format Pemalang (Coming Soon)"])
 
     with st.form("upload_holding"):
         file_raw = st.file_uploader("📥 Upload Excel Mentah (Drag & Drop di sini):", type=["xlsx", "xls"])
@@ -251,10 +256,14 @@ if menu == "Pembersihan PO":
                                     })
                 else: st.error("Gagal menemukan Header 'Nama Barang', 'Qty', dan 'Harga' pada file ini. Pastikan file RA asli.")
 
-            # --- 2. LOGIKA PLANT PGP (FIXED SUPER FILTER) ---
-            elif "Plant PGP" in pilihan_format:
-                st.info("🤖 Mesin Traktor PGP membuang spasi ghaib dan kode barang...")
+            # --- 2. LOGIKA GABUNGAN (PGP & CEPER) ---
+            elif "PGP" in pilihan_format or "Ceper" in pilihan_format:
+                # Assign nama unit kerja berdasarkan pilihan dropdown user
+                detected_plant = "PGP" if "PGP" in pilihan_format else "CEPER"
+                st.info(f"🤖 Mesin Traktor bekerja untuk format Laporan PO per Bukti ({detected_plant})...")
+                
                 curr_po, curr_tgl, curr_vendor, curr_money = "-", "-", "-", "RP"
+
                 for idx, row in df_input.iterrows():
                     val_list = [str(c).strip() for c in row.values if str(c).strip() not in ['nan', 'None', '']]
                     if not val_list: continue
@@ -262,6 +271,7 @@ if menu == "Pembersihan PO":
 
                     if any(x in line_text for x in ["SUBTOTAL", "GRAND TOTAL", "LAPORAN PO", "NO TRANS"]): continue
 
+                    # HEADER: Cari tulisan INCLUDE/EXCLUDE
                     if "INCLUDE" in line_text or "EXCLUDE" in line_text:
                         curr_po = val_list[0]
                         for c in val_list: 
@@ -274,18 +284,20 @@ if menu == "Pembersihan PO":
                         else:
                             curr_vendor = "CASH / TANPA NAMA"
                             
+                        # Dukungan Multi-Currency (Ceper Edition)
                         curr_money = "RP"
                         for m in ["USD", "EUR", "CNY", "JPY"]:
                             if m in line_text: curr_money = m; break
                         continue
                         
+                    # DETAIL ITEM
                     if curr_po != "-":
                         nums = []
                         for v in val_list:
                             n = parse_numeric(v)
                             if n is not None: nums.append(n)
                         
-                        # PGP minimal ada 2 angka di baris item (Qty dan Qty/Harga)
+                        # Baris item punya minimal 2 angka (Qty1/2 dan Harga)
                         if len(nums) >= 2:
                             names = []
                             for v in val_list:
@@ -294,27 +306,25 @@ if menu == "Pembersihan PO":
                                 if re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', v_str): continue
                                 if v_str.upper() in ["RP", "USD", "EUR", "CNY", "IDR"]: continue
                                 
-                                # ---> SUPER FILTER PEMBASMI SPASI GHAIB & KODE <---
-                                # Hapus spasi ghaib (non-breaking space)
+                                # ---> GENERAL SUPER FILTER (PGP & CEPER) <---
                                 v_clean = v_str.replace('\xa0', '').strip()
                                 
-                                # Jika mengandung PGP, ada angkanya, dan tidak ada spasi di tengahnya -> BUANG!
-                                if "PGP" in v_clean.upper() and re.search(r'\d', v_clean) and " " not in v_clean:
+                                # Buang kode seperti PGPPR2603-015 atau PBIMK2504-0026R atau 019/III/2026
+                                # Ciri-ciri: panjang >= 8, ada angka, dan tidak ada spasi sama sekali di dalamnya
+                                if len(v_clean) >= 8 and " " not in v_clean and re.search(r'\d', v_clean):
                                     continue 
-                                    
-                                # Jika karakternya panjang >= 10, ada angka, huruf, tapi tidak ada spasi -> BUANG (Pasti Kode Barang)!
-                                if len(v_clean) >= 10 and " " not in v_clean and re.search(r'\d', v_clean) and re.search(r'[A-Z]', v_clean.upper()):
-                                    continue
 
                                 names.append(v_str)
                             
                             item_name = max(names, key=len) if names else "Unknown"
                             
+                            # Logika Quantiy Laporan PO Per Bukti: Qty2 adalah qty utama (index 1)
                             qty_val = nums[1] if len(nums) > 1 else nums[0]
+                            # Harga satuan ada di index setelahnya
                             prc_val = nums[2] if len(nums) > 2 else 0.0
                             
                             extracted_rows.append({
-                                "UNIT KERJA": "PGP", "NO PO": curr_po, "TANGGAL": curr_tgl, "VENDOR": curr_vendor,
+                                "UNIT KERJA": detected_plant, "NO PO": curr_po, "TANGGAL": curr_tgl, "VENDOR": curr_vendor,
                                 "MATA UANG": curr_money, "ITEM_KOTOR": item_name, "QTY": qty_val, "HARGA": prc_val
                             })
 
@@ -399,7 +409,7 @@ if menu == "Pembersihan PO":
 
         except Exception as e: st.error(f"Error Mesin: {e}")
 
-    # --- TAMPILAN TABEL REVIEW ---
+    # --- TAMPILAN TABEL REVIEW (SATPAM GAIB & DROP PENYUSUP) ---
     if 'holding_draft' in st.session_state:
         st.markdown("### ⚠️ TAHAP REVIEW HOLDING")
         st.info("💡 **INFO:** Centang kotak **❌ BUKAN SCOPE** untuk membuang barang yang bukan wewenang Anda (ATK, dll). Anda juga bisa mengetik `KATEGORI` untuk **⚠️ BARANG BARU**.")
@@ -870,7 +880,7 @@ elif menu == "Maintenance Data":
 st.markdown("---")
 st.markdown(
     "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v4.7 | Proprietary of PT Panca Budi Idaman Tbk | Created with  for Raihan Subakti"
+    "ERP Purchasing System v4.9 | Proprietary of PT Panca Budi Idaman Tbk | Created with  for Raihan Subakti"
     "</p>", 
     unsafe_allow_html=True
 )
