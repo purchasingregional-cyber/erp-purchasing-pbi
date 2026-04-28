@@ -2,7 +2,7 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 4.9 (FULL HOLDING VERSION - Pisah Menu PGP & Ceper)
+# Versi: 5.0 (ULTIMATE HOLDING VERSION - All Plants Integrated)
 # ==============================================================================
 
 import streamlit as st
@@ -191,13 +191,13 @@ if menu == "Pembersihan PO":
     
     col_sel, col_empty = st.columns([1.5, 1])
     with col_sel:
-        # PERUBAHAN V4.9: Pisahkan PGP dan Ceper agar user tidak bingung
+        # FULL INTEGRATION: RA, PGP, CEPER, PEMALANG, PUSAT
         pilihan_format = st.selectbox("🏢 Pilih Asal Laporan / Format Pabrik:", 
                                      ["Plant RA (ra pembelian.xls)", 
                                       "Plant PGP (Laporan PO per Bukti)", 
                                       "Plant Ceper (Laporan PO per Bukti)", 
-                                      "ERP Pusat (Include/Exclude)", 
-                                      "Format Pemalang (Coming Soon)"])
+                                      "Plant Pemalang (Laporan PO per Bukti)",
+                                      "ERP Pusat (Include/Exclude)"])
 
     with st.form("upload_holding"):
         file_raw = st.file_uploader("📥 Upload Excel Mentah (Drag & Drop di sini):", type=["xlsx", "xls"])
@@ -256,10 +256,13 @@ if menu == "Pembersihan PO":
                                     })
                 else: st.error("Gagal menemukan Header 'Nama Barang', 'Qty', dan 'Harga' pada file ini. Pastikan file RA asli.")
 
-            # --- 2. LOGIKA GABUNGAN (PGP & CEPER) ---
-            elif "PGP" in pilihan_format or "Ceper" in pilihan_format:
-                # Assign nama unit kerja berdasarkan pilihan dropdown user
-                detected_plant = "PGP" if "PGP" in pilihan_format else "CEPER"
+            # --- 2. LOGIKA GABUNGAN (PGP, CEPER, PEMALANG) ---
+            elif any(plant in pilihan_format for plant in ["PGP", "Ceper", "Pemalang"]):
+                # Tentukan nama unit kerja dari dropdown yang dipilih Bosku
+                if "PGP" in pilihan_format: detected_plant = "PGP"
+                elif "Ceper" in pilihan_format: detected_plant = "CEPER"
+                else: detected_plant = "PEMALANG"
+                
                 st.info(f"🤖 Mesin Traktor bekerja untuk format Laporan PO per Bukti ({detected_plant})...")
                 
                 curr_po, curr_tgl, curr_vendor, curr_money = "-", "-", "-", "RP"
@@ -284,7 +287,7 @@ if menu == "Pembersihan PO":
                         else:
                             curr_vendor = "CASH / TANPA NAMA"
                             
-                        # Dukungan Multi-Currency (Ceper Edition)
+                        # Dukungan Multi-Currency
                         curr_money = "RP"
                         for m in ["USD", "EUR", "CNY", "JPY"]:
                             if m in line_text: curr_money = m; break
@@ -306,10 +309,10 @@ if menu == "Pembersihan PO":
                                 if re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', v_str): continue
                                 if v_str.upper() in ["RP", "USD", "EUR", "CNY", "IDR"]: continue
                                 
-                                # ---> GENERAL SUPER FILTER (PGP & CEPER) <---
+                                # ---> GENERAL SUPER FILTER (PGP, CEPER, PEMALANG) <---
                                 v_clean = v_str.replace('\xa0', '').strip()
                                 
-                                # Buang kode seperti PGPPR2603-015 atau PBIMK2504-0026R atau 019/III/2026
+                                # Buang kode seperti PGPPR2603-015, PBIMK2504-0026R, atau 075/XII/2024
                                 # Ciri-ciri: panjang >= 8, ada angka, dan tidak ada spasi sama sekali di dalamnya
                                 if len(v_clean) >= 8 and " " not in v_clean and re.search(r'\d', v_clean):
                                     continue 
@@ -880,7 +883,7 @@ elif menu == "Maintenance Data":
 st.markdown("---")
 st.markdown(
     "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v4.9 | Proprietary of PT Panca Budi Idaman Tbk | Created with  for Raihan Subakti"
+    "ERP Purchasing System v5.0 | Proprietary of PT Panca Budi Idaman Tbk | Created with ❤️ for Raihan Subakti"
     "</p>", 
     unsafe_allow_html=True
 )
