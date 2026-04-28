@@ -1,7 +1,8 @@
 # ==============================================================================
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
+# Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 4.4 (FULL HOLDING VERSION - Update/Overwrite Existing Images)
+# Versi: 4.5 (FULL HOLDING VERSION - Mesin Ekstraksi Plant PGP)
 # ==============================================================================
 
 import streamlit as st
@@ -172,7 +173,7 @@ with st.sidebar:
         menu_title="", 
         options=["Pembersihan PO", "Pencarian Barang", "E-Catalog & Studio", "Database Vendor", "Dashboard Laporan", "Maintenance Data"],
         icons=["magic", "search", "images", "shop", "bar-chart-line", "tools"], 
-        default_index=2,
+        default_index=0,
         styles={
             "container": {"padding": "0!important", "background-color": "transparent"},
             "icon": {"color": "#64748B", "font-size": "18px"}, 
@@ -191,7 +192,7 @@ if menu == "Pembersihan PO":
     col_sel, col_empty = st.columns([1.5, 1])
     with col_sel:
         pilihan_format = st.selectbox("🏢 Pilih Asal Laporan / Format Pabrik:", 
-                                     ["Plant RA (ra pembelian.xls)", "ERP Pusat (Include/Exclude)", "Format Ceper (Coming Soon)", "Format Pemalang (Coming Soon)"])
+                                     ["Plant RA (ra pembelian.xls)", "Plant PGP (Laporan PO per Bukti)", "ERP Pusat (Include/Exclude)", "Format Ceper (Coming Soon)", "Format Pemalang (Coming Soon)"])
 
     with st.form("upload_holding"):
         file_raw = st.file_uploader("📥 Upload Excel Mentah (Drag & Drop di sini):", type=["xlsx", "xls"])
@@ -202,6 +203,7 @@ if menu == "Pembersihan PO":
             df_input = pd.read_excel(file_raw, header=None)
             extracted_rows = []
 
+            # --- 1. LOGIKA PLANT RA ---
             if "Plant RA" in pilihan_format:
                 st.info("🤖 Mesin Khusus RA memindai struktur kolom secara dinamis...")
                 curr_po, curr_tgl, curr_vendor = "-", "-", "-"
@@ -249,6 +251,66 @@ if menu == "Pembersihan PO":
                                     })
                 else: st.error("Gagal menemukan Header 'Nama Barang', 'Qty', dan 'Harga' pada file ini. Pastikan file RA asli.")
 
+            # --- 2. LOGIKA PLANT PGP (BARU!) ---
+            elif "Plant PGP" in pilihan_format:
+                st.info("🤖 Mesin Traktor PGP sedang memilah Qty1 & Qty2...")
+                curr_po, curr_tgl, curr_vendor, curr_money = "-", "-", "-", "RP"
+                for idx, row in df_input.iterrows():
+                    val_list = [str(c).strip() for c in row.values if str(c).strip() not in ['nan', 'None', '']]
+                    if not val_list: continue
+                    line_text = " | ".join(val_list).upper()
+
+                    if any(x in line_text for x in ["SUBTOTAL", "GRAND TOTAL", "LAPORAN PO", "NO TRANS"]): continue
+
+                    # Deteksi Header PGP (Mengandung "INCLUDE" atau "EXCLUDE" dan Tanggal)
+                    if "INCLUDE" in line_text or "EXCLUDE" in line_text:
+                        curr_po = val_list[0]
+                        for c in val_list: 
+                            m = re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', c)
+                            if m: curr_tgl = m.group(0); break
+                            
+                        # Vendor di PGP ditaruh di paling belakang setelah tanda " - "
+                        potensi_vendor = [v for v in val_list if " - " in v]
+                        if potensi_vendor:
+                            curr_vendor = potensi_vendor[-1].split(" - ")[-1].strip()
+                        else:
+                            curr_vendor = "CASH / TANPA NAMA"
+                            
+                        curr_money = "RP"
+                        for m in ["USD", "EUR", "CNY", "JPY"]:
+                            if m in line_text: curr_money = m; break
+                        continue
+                        
+                    # Deteksi Detail Barang PGP
+                    if curr_po != "-":
+                        nums = []
+                        for v in val_list:
+                            n = parse_numeric(v)
+                            if n is not None: nums.append(n)
+                        
+                        # PGP butuh Minimal Qty1, Qty2, dan Harga
+                        if len(nums) >= 3:
+                            names = []
+                            for v in val_list:
+                                v_str = str(v).strip()
+                                if parse_numeric(v_str) is not None: continue
+                                if re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', v_str): continue
+                                if v_str.upper() in ["RP", "USD", "EUR", "CNY", "IDR"]: continue
+                                names.append(v_str)
+                            
+                            # Ambil teks terpanjang (Menghindari "PGPOK2507-001" kepilih jadi nama)
+                            item_name = max(names, key=len) if names else "Unknown"
+                            
+                            # Logika PGP: Qty2 adalah quantity asli (index 1), Harga adalah setelahnya (index 2)
+                            qty_val = nums[1] if len(nums) > 1 else nums[0]
+                            prc_val = nums[2] if len(nums) > 2 else 0.0
+                            
+                            extracted_rows.append({
+                                "UNIT KERJA": "PGP", "NO PO": curr_po, "TANGGAL": curr_tgl, "VENDOR": curr_vendor,
+                                "MATA UANG": curr_money, "ITEM_KOTOR": item_name, "QTY": qty_val, "HARGA": prc_val
+                            })
+
+            # --- 3. LOGIKA ERP PUSAT (LAMA) ---
             elif "ERP Pusat" in pilihan_format:
                 st.info("🤖 Mesin ERP Pusat sedang bekerja...")
                 curr_po, curr_tgl, curr_vendor, curr_money = "-", "-", "-", "RP"
@@ -294,6 +356,7 @@ if menu == "Pembersihan PO":
                                     "MATA UANG": curr_money, "ITEM_KOTOR": item_name, "QTY": nums[0], "HARGA": nums[-1]
                                 })
 
+            # --- AI MATCHING & DRAFT PREPARATION ---
             if extracted_rows:
                 st.success(f"✔️ Berhasil mengekstrak {len(extracted_rows)} baris data mentah yang valid.")
                 final_draft = []
@@ -328,6 +391,7 @@ if menu == "Pembersihan PO":
 
         except Exception as e: st.error(f"Error Mesin: {e}")
 
+    # --- TAMPILAN TABEL REVIEW (SATPAM GAIB & DROP PENYUSUP) ---
     if 'holding_draft' in st.session_state:
         st.markdown("### ⚠️ TAHAP REVIEW HOLDING")
         st.info("💡 **INFO:** Centang kotak **❌ BUKAN SCOPE** untuk membuang barang yang bukan wewenang Anda (ATK, dll). Anda juga bisa mengetik `KATEGORI` untuk **⚠️ BARANG BARU**.")
@@ -446,14 +510,12 @@ elif menu == "E-Catalog & Studio":
         
         if 'LINK GAMBAR' not in df_master.columns: df_master['LINK GAMBAR'] = ""
         
-        # PERBAIKAN V4.4: Tampilkan semua barang (unik) di dropdown, bukan cuma yang kosong
         all_unique_items = df_master.drop_duplicates(subset=['NAMA BAKU'], keep='last')['NAMA BAKU'].tolist()
         
         if not all_unique_items: st.success("Database Kosong.")
         else:
             barang_pilih = st.selectbox("Ketik Nama Produk yang Mau Diubah/Ditambah Gambarnya:", all_unique_items)
             
-            # --- TAMPILKAN STATUS GAMBAR SAAT INI ---
             current_row = df_master[df_master['NAMA BAKU'] == barang_pilih].iloc[-1]
             current_link = str(current_row.get('LINK GAMBAR', '')).strip()
             
@@ -800,7 +862,7 @@ elif menu == "Maintenance Data":
 st.markdown("---")
 st.markdown(
     "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v4.4 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
+    "ERP Purchasing System v4.5 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
     "</p>", 
     unsafe_allow_html=True
 )
