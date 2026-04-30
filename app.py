@@ -2,7 +2,7 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 7.1 (EXECUTIVE EDITION + Solo Smart Auto-Detect Integration)
+# Versi: 7.2 (EXECUTIVE EDITION + Ultimate Sheet Memory & Smart FPB Date)
 # ==============================================================================
 
 import streamlit as st
@@ -215,7 +215,6 @@ if menu == "Pembersihan PO":
     
     col_sel, col_empty = st.columns([1.5, 1])
     with col_sel:
-        # PERUBAHAN V7.1: Tambah Plant Solo ke daftar Dropdown
         pilihan_format = st.selectbox("🏢 Pilih Asal Laporan / Format Pabrik:", 
                                      ["Plant RA (Auto-Detect Format)", 
                                       "Plant PGP (Auto-Detect Format)",
@@ -234,6 +233,7 @@ if menu == "Pembersihan PO":
             dict_df = pd.read_excel(file_raw, sheet_name=None, header=None)
             extracted_rows = []
             
+            # --- TAMPILAN NOTIFIKASI ---
             if "Plant RA" in pilihan_format:
                 st.info("🤖 Mesin Smart-Detect RA sedang memindai format (Lama/Baru) pada seluruh sheet...")
             elif "Plant PGP" in pilihan_format:
@@ -243,66 +243,45 @@ if menu == "Pembersihan PO":
             elif "Plant Pemalang" in pilihan_format:
                 st.info("🤖 Mesin Smart-Detect Pemalang sedang memindai format (Lama/Baru) pada seluruh sheet...")
             elif "Plant Solo" in pilihan_format:
-                st.info("🤖 Mesin Smart-Detect Solo sedang memindai format (Lama/Baru) pada seluruh sheet...")
+                st.info("🤖 Mesin Smart-Detect Solo sedang memindai format pada seluruh sheet...")
             elif "PIHC" in pilihan_format:
                 st.info("🤖 Mata Pisau Khusus PIHC menjahit kolom beda baris di seluruh sheet...")
             elif "ERP Pusat" in pilihan_format:
                 st.info("🤖 Mesin ERP Pusat membaca seluruh sheet...")
 
+            # VARIABEL MEMORY ANTAR SHEET
+            master_format_type = None
+            master_cols_new = None
+
             for sheet_name, df_input in dict_df.items():
                 format_type = ""
                 detected_plant = ""
 
-                # --- PENENTUAN FORMAT SECARA DINAMIS DENGAN SUPER SCANNER ---
+                # --- PENENTUAN FORMAT (CUKUP SEKALI DI SHEET AWAL) ---
                 if "ERP Pusat" in pilihan_format:
                     format_type = "PUSAT"; detected_plant = "PUSAT"
                 elif "PIHC" in pilihan_format:
                     format_type = "NEW"; detected_plant = "PIHC"
-                elif "Plant RA" in pilihan_format:
-                    detected_plant = "RA"
+                else:
+                    if "Plant RA" in pilihan_format: detected_plant = "RA"
+                    elif "Plant PGP" in pilihan_format: detected_plant = "PGP"
+                    elif "Plant Tangerang" in pilihan_format: detected_plant = "TANGERANG"
+                    elif "Plant Pemalang" in pilihan_format: detected_plant = "PEMALANG"
+                    elif "Plant Solo" in pilihan_format: detected_plant = "SOLO"
+                    
                     is_new = False
                     for idx, row in df_input.head(20).iterrows():
                         teks_sebaris = " ".join([str(c).strip().upper() for c in row.values if pd.notna(c)])
                         if "REKAP FORMULIR" in teks_sebaris or "PENUNJUKKAN VENDOR" in teks_sebaris or "FORMULIR PERMINTAAN" in teks_sebaris:
                             is_new = True
                             break
-                    format_type = "NEW" if is_new else "RA_OLD"
-                elif "Plant PGP" in pilihan_format:
-                    detected_plant = "PGP"
-                    is_new = False
-                    for idx, row in df_input.head(20).iterrows():
-                        teks_sebaris = " ".join([str(c).strip().upper() for c in row.values if pd.notna(c)])
-                        if "REKAP FORMULIR" in teks_sebaris or "PENUNJUKKAN VENDOR" in teks_sebaris or "FORMULIR PERMINTAAN" in teks_sebaris:
-                            is_new = True
-                            break
-                    format_type = "NEW" if is_new else "OLD"
-                elif "Plant Tangerang" in pilihan_format:
-                    detected_plant = "TANGERANG"
-                    is_new = False
-                    for idx, row in df_input.head(20).iterrows():
-                        teks_sebaris = " ".join([str(c).strip().upper() for c in row.values if pd.notna(c)])
-                        if "REKAP FORMULIR" in teks_sebaris or "PENUNJUKKAN VENDOR" in teks_sebaris or "FORMULIR PERMINTAAN" in teks_sebaris:
-                            is_new = True
-                            break
-                    format_type = "NEW" if is_new else "OLD"
-                elif "Plant Pemalang" in pilihan_format:
-                    detected_plant = "PEMALANG"
-                    is_new = False
-                    for idx, row in df_input.head(20).iterrows():
-                        teks_sebaris = " ".join([str(c).strip().upper() for c in row.values if pd.notna(c)])
-                        if "REKAP FORMULIR" in teks_sebaris or "PENUNJUKKAN VENDOR" in teks_sebaris or "FORMULIR PERMINTAAN" in teks_sebaris:
-                            is_new = True
-                            break
-                    format_type = "NEW" if is_new else "OLD"
-                elif "Plant Solo" in pilihan_format:
-                    detected_plant = "SOLO"
-                    is_new = False
-                    for idx, row in df_input.head(20).iterrows():
-                        teks_sebaris = " ".join([str(c).strip().upper() for c in row.values if pd.notna(c)])
-                        if "REKAP FORMULIR" in teks_sebaris or "PENUNJUKKAN VENDOR" in teks_sebaris or "FORMULIR PERMINTAAN" in teks_sebaris:
-                            is_new = True
-                            break
-                    format_type = "NEW" if is_new else "OLD"
+                    format_type = "NEW" if is_new else ("RA_OLD" if "Plant RA" in pilihan_format else "OLD")
+
+                # TIMPA DENGAN MEMORY JIKA INI ADALAH SHEET KE-2 DST
+                if master_format_type is None:
+                    master_format_type = format_type
+                else:
+                    format_type = master_format_type
 
                 # =======================================
                 # EKSEKUSI BERDASARKAN FORMAT
@@ -419,23 +398,31 @@ if menu == "Pembersihan PO":
                         if m_g and ("TANGGAL" in text_g or "DATE" in text_g or "TGL" in text_g):
                             global_date = m_g.group(0); break
 
-                    for idx, row in df_input.head(30).iterrows():
-                        for i, c in enumerate(row.values):
-                            if pd.isna(c): continue
-                            x_clean = re.sub(r'\s+', ' ', str(c).strip().upper())
-                            
-                            if ('JENIS BARANG' in x_clean or 'NAMA BARANG' in x_clean) and col_nama == -1: 
-                                col_nama = i; start_idx = max(start_idx, idx)
-                            elif 'HARGA' in x_clean and 'PER' not in x_clean and 'UPDATE' not in x_clean and col_harga == -1: 
-                                col_harga = i; start_idx = max(start_idx, idx)
-                            elif 'VENDOR' in x_clean and 'PENUNJUKKAN' not in x_clean and col_vendor == -1: 
-                                col_vendor = i; start_idx = max(start_idx, idx)
-                            elif ('QTY' in x_clean) and col_qty == -1: 
-                                col_qty = i
-                            elif ('NO PO' in x_clean or 'NOMOR PO' in x_clean or 'NO. PO' in x_clean or 'NO FPB' in x_clean or 'NO. FPB' in x_clean) and col_po == -1: 
-                                col_po = i
-                            elif ('PENYELESAIAN' in x_clean or 'TGL EMAIL' in x_clean or 'DATANG' in x_clean) and col_tgl == -1: 
-                                col_tgl = i
+                    # CEK KOLOM (JIKA TIDAK ADA DI MEMORY)
+                    if master_cols_new is None:
+                        for idx, row in df_input.head(30).iterrows():
+                            for i, c in enumerate(row.values):
+                                if pd.isna(c): continue
+                                x_clean = re.sub(r'\s+', ' ', str(c).strip().upper())
+                                
+                                if ('JENIS BARANG' in x_clean or 'NAMA BARANG' in x_clean) and col_nama == -1: 
+                                    col_nama = i; start_idx = max(start_idx, idx)
+                                elif 'HARGA' in x_clean and 'PER' not in x_clean and 'UPDATE' not in x_clean and col_harga == -1: 
+                                    col_harga = i; start_idx = max(start_idx, idx)
+                                elif 'VENDOR' in x_clean and 'PENUNJUKKAN' not in x_clean and col_vendor == -1: 
+                                    col_vendor = i; start_idx = max(start_idx, idx)
+                                elif ('QTY' in x_clean) and col_qty == -1: 
+                                    col_qty = i
+                                elif ('NO PO' in x_clean or 'NOMOR PO' in x_clean or 'NO. PO' in x_clean or 'NO FPB' in x_clean or 'NO. FPB' in x_clean) and col_po == -1: 
+                                    col_po = i
+                                elif ('PENYELESAIAN' in x_clean or 'TGL EMAIL' in x_clean or 'DATANG' in x_clean) and col_tgl == -1: 
+                                    col_tgl = i
+                        if col_nama != -1 and col_harga != -1:
+                            master_cols_new = (col_nama, col_qty, col_harga, col_vendor, col_po, col_tgl)
+                    else:
+                        # GUNAKAN MEMORY DARI SHEET SEBELUMNYA
+                        col_nama, col_qty, col_harga, col_vendor, col_po, col_tgl = master_cols_new
+                        start_idx = -1  # Ekstrak dari baris paling atas
                                 
                     if col_nama != -1 and col_harga != -1:
                         for idx, row in df_input.iloc[start_idx+1:].iterrows():
@@ -450,15 +437,20 @@ if menu == "Pembersihan PO":
                                 if item_name.lower() in ['', 'nan', 'none']: continue
                                 
                                 qty_val = parse_numeric(row.values[col_qty]) if col_qty != -1 else 1.0
-                                prc_val = parse_numeric(row.values[col_harga])
+                                if qty_val is None: qty_val = 1.0
                                 
-                                if prc_val is None or prc_val == 0: continue 
+                                # ALLOW ZERO PRICE UNTUK BARANG YANG HARGANYA TEKS (TUNGGU BARANG/KOSONG)
+                                prc_val = parse_numeric(row.values[col_harga])
+                                if prc_val is None: prc_val = 0.0
                                 
                                 v_str = str(row.values[col_vendor]).strip() if col_vendor != -1 else "-"
                                 vendor_val = v_str if v_str.lower() not in ['nan', 'none', ''] else "CASH / TANPA NAMA"
                                 
                                 po_str = str(row.values[col_po]).strip() if col_po != -1 else "-"
                                 po_val = po_str if po_str.lower() not in ['nan', 'none', ''] else "-"
+
+                                # Filter keras: Hanya lewati jika harga 0 DAN tidak ada nomor PO/FPB sama sekali
+                                if prc_val == 0 and po_val == "-": continue 
                                 
                                 tgl_val = "-"
                                 if col_tgl != -1:
@@ -474,6 +466,14 @@ if menu == "Pembersihan PO":
                                 
                                 if tgl_val == "-" and global_date != "-":
                                     tgl_val = global_date
+                                    
+                                # FITUR SAKTI 7.2: SMART FPB DATE EXTRACTOR
+                                # Ambil bulan dan tahun dari kode FPB (Contoh: 2603/PIHS... -> Maret 2026)
+                                m_fpb = re.search(r'[A-Za-z]*(\d{2})(0[1-9]|1[0-2])[-/]', po_val)
+                                if m_fpb:
+                                    year_fpb = "20" + m_fpb.group(1)
+                                    month_fpb = m_fpb.group(2)
+                                    tgl_val = f"{year_fpb}-{month_fpb}-01"
                                             
                                 extracted_rows.append({
                                     "UNIT KERJA": detected_plant, "NO PO": po_val, "TANGGAL": tgl_val, "VENDOR": vendor_val,
@@ -1144,7 +1144,7 @@ elif menu == "Maintenance Data":
 st.markdown("---")
 st.markdown(
     "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v7.1 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
+    "ERP Purchasing System v7.2 | Proprietary of PT Panca Budi Idaman Tbk | Created with ❤️ for Raihan Subakti"
     "</p>", 
     unsafe_allow_html=True
 )
