@@ -2,7 +2,7 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 6.6 (EXECUTIVE EDITION + Perfect Auto-Detect PGP Fix)
+# Versi: 6.7 (EXECUTIVE EDITION + Clean Excel Downloader)
 # ==============================================================================
 
 import streamlit as st
@@ -262,8 +262,6 @@ if menu == "Pembersihan PO":
                 elif "Plant PGP" in pilihan_format:
                     detected_plant = "PGP"
                     is_new = False
-                    
-                    # PERBAIKAN V6.6: Kunci deteksi yang solid. Cari tulisan spesifik format baru.
                     for idx, row in df_input.head(20).iterrows():
                         teks_sebaris = " ".join([str(c).strip().upper() for c in row.values if pd.notna(c)])
                         if "REKAP FORMULIR" in teks_sebaris or "PENUNJUKKAN VENDOR" in teks_sebaris:
@@ -580,6 +578,44 @@ if menu == "Pembersihan PO":
                 except Exception as e: st.error(f"Simpan Gagal: {e}")
         with c2:
             if st.button("❌ Batalkan Semua", use_container_width=True): del st.session_state['holding_draft']; st.rerun()
+            
+        # --- FITUR BARU 6.7: DOWNLOAD EXCEL RAPI ---
+        st.markdown("<br>", unsafe_allow_html=True)
+        try:
+            df_to_export = edited_df[edited_df["❌ BUKAN SCOPE"] == False]
+            if not df_to_export.empty:
+                export_data = []
+                for _, r in df_to_export.iterrows():
+                    info = mapping_master.get(r['NAMA_BAKU'], {})
+                    if r['NAMA_BAKU'] != "⚠️ BARANG BARU":
+                        kat_final = info.get('KATEGORI', '-')
+                        det_kat_final = info.get('DETAIL KATEGORI', '-')
+                    else:
+                        kat_final = str(r.get('KATEGORI', '-')).strip().upper()
+                        det_kat_final = str(r.get('DETAIL KATEGORI', '-')).strip().upper()
+                    
+                    export_data.append({
+                        'UNIT KERJA': r['UNIT'], 'NOMOR PO': r['PO'], 'TANGGAL': r['TANGGAL'], 'NAMA VENDOR': r['VENDOR'], 
+                        'MATA UANG': "RP", 'NAMA ITEM ASLI (KOTOR)': r['ITEM_ASLI'], 'NAMA BARANG (BAKU)': r['NAMA_BAKU'], 
+                        'QTY': r['QTY'], 'UOM': info.get('SATUAN', '-'), 'HARGA SATUAN': r['HARGA'], 
+                        'KATEGORI': kat_final, 'DETAIL KATEGORI': det_kat_final, 'SKU': r['SKU']
+                    })
+                
+                df_final_export = pd.DataFrame(export_data).fillna("-")
+                buffer_clean = io.BytesIO()
+                with pd.ExcelWriter(buffer_clean, engine='openpyxl') as writer:
+                    df_final_export.to_excel(writer, index=False, sheet_name='Data Bersih')
+                excel_clean_data = buffer_clean.getvalue()
+                
+                st.download_button(
+                    label="📥 Download Hasil Pembersihan (Excel Rapi)", 
+                    data=excel_clean_data, 
+                    file_name=f"Data_Bersih_Holding_{datetime.date.today()}.xlsx", 
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
+                    use_container_width=True
+                )
+        except Exception as e:
+            st.error(f"Gagal menyiapkan tombol download: {e}")
 
 # ==========================================
 # MENU 2: PENCARIAN BARANG
@@ -1075,7 +1111,7 @@ elif menu == "Maintenance Data":
 st.markdown("---")
 st.markdown(
     "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v6.6 | Proprietary of PT Panca Budi Idaman Tbk | Created with ❤️ for Raihan Subakti"
+    "ERP Purchasing System v6.7 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
     "</p>", 
     unsafe_allow_html=True
 )
