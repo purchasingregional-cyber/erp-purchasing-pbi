@@ -2,7 +2,7 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 5.8 (EXECUTIVE EDITION + PIHC Multi-Tier Scanner Fix)
+# Versi: 5.9 (EXECUTIVE EDITION + Fix Inflasi Siluman / Decimal Bug)
 # ==============================================================================
 
 import streamlit as st
@@ -86,10 +86,27 @@ def format_rupiah(angka):
     try:
         val = str(angka).strip()
         if val.upper() in ['NAN', 'NONE', '']: return "Rp 0"
+        
+        # PERBAIKAN: Buang .0 atau ,00 di belakang sebelum dibersihkan agar tidak inflasi
+        if val.endswith('.0'): val = val[:-2]
+        if val.endswith(',00'): val = val[:-3]
+        
         num_str = re.sub(r'[^0-9]', '', val)
         if num_str: return f"Rp {int(num_str):,}".replace(',', '.')
         return val
     except: return "Rp 0"
+
+def parse_harga(x):
+    try:
+        s = str(x).upper().replace('RP', '').replace('IDR', '').strip()
+        
+        # PERBAIKAN: Buang desimal siluman dari float Pandas
+        if s.endswith('.0'): s = s[:-2]
+        if s.endswith(',00'): s = s[:-3]
+        
+        s = re.sub(r'[^0-9]', '', s)
+        return float(s) if s else 0.0
+    except: return 0.0
 
 def parse_numeric(value):
     try:
@@ -219,7 +236,6 @@ if menu == "Pembersihan PO":
             df_input = pd.read_excel(file_raw, header=None)
             extracted_rows = []
 
-            # --- 1. LOGIKA PLANT RA ---
             if "Plant RA" in pilihan_format:
                 st.info("🤖 Mesin Khusus RA memindai struktur kolom secara dinamis...")
                 curr_po, curr_tgl, curr_vendor = "-", "-", "-"
@@ -267,7 +283,6 @@ if menu == "Pembersihan PO":
                                     })
                 else: st.error("Gagal menemukan Header 'Nama Barang', 'Qty', dan 'Harga' pada file ini. Pastikan file RA asli.")
 
-            # --- 2. LOGIKA GABUNGAN (PGP, CEPER, PEMALANG) ---
             elif any(plant in pilihan_format for plant in ["PGP", "Ceper", "Pemalang"]):
                 if "PGP" in pilihan_format: detected_plant = "PGP"
                 elif "Ceper" in pilihan_format: detected_plant = "CEPER"
@@ -330,13 +345,11 @@ if menu == "Pembersihan PO":
                                 "MATA UANG": curr_money, "ITEM_KOTOR": item_name, "QTY": qty_val, "HARGA": prc_val
                             })
 
-            # --- 3. LOGIKA BARU UNTUK PIHC (MULTI-TIER HEADER SCANNER) ---
             elif "PIHC" in pilihan_format:
                 st.info("🤖 Mata Pisau Khusus PIHC sedang menjahit kolom beda baris (Anti-Merge Fix)...")
                 col_nama = col_qty = col_harga = col_vendor = col_po = col_tgl = -1
                 start_idx = 0
                 
-                # Scan 20 baris pertama untuk mencari di kolom ke-berapa header itu berada
                 for idx, row in df_input.head(20).iterrows():
                     row_upper = [str(c).strip().upper().replace('\n', ' ') for c in row.values]
                     
@@ -354,7 +367,6 @@ if menu == "Pembersihan PO":
                         elif ('PENYELESAIAN' in x or 'TGL EMAIL' in x) and col_tgl == -1: 
                             col_tgl = i
                             
-                # Jika komponen utama ketemu, mulai ekstrak data persis di bawahnya
                 if col_nama != -1 and col_harga != -1:
                     for idx, row in df_input.iloc[start_idx+1:].iterrows():
                         val_list = [str(c).strip() for c in row.values if str(c).strip() not in ['nan', 'None', '']]
@@ -370,7 +382,6 @@ if menu == "Pembersihan PO":
                             qty_val = parse_numeric(row.values[col_qty]) if col_qty != -1 else 1.0
                             prc_val = parse_numeric(row.values[col_harga])
                             
-                            # Filter anti-batal/merah: Kalau harga kosong, 0, atau "#VALUE!", abaikan baris ini
                             if prc_val is None or prc_val == 0: continue 
                             
                             v_str = str(row.values[col_vendor]).strip() if col_vendor != -1 else "-"
@@ -398,7 +409,6 @@ if menu == "Pembersihan PO":
                         except Exception: pass
                 else: st.error("Gagal menemukan Header multi-baris. Pastikan ada 'Jenis Barang' dan 'Harga'.")
 
-            # --- 4. LOGIKA ERP PUSAT (LAMA) ---
             elif "ERP Pusat" in pilihan_format:
                 st.info("🤖 Mesin ERP Pusat sedang bekerja...")
                 curr_po, curr_tgl, curr_vendor, curr_money = "-", "-", "-", "RP"
@@ -444,7 +454,6 @@ if menu == "Pembersihan PO":
                                     "MATA UANG": curr_money, "ITEM_KOTOR": item_name, "QTY": nums[0], "HARGA": nums[-1]
                                 })
 
-            # --- AI MATCHING & DRAFT PREPARATION ---
             if extracted_rows:
                 st.success(f"✔️ Berhasil mengekstrak {len(extracted_rows)} baris data mentah yang valid.")
                 final_draft = []
@@ -705,9 +714,12 @@ elif menu == "Dashboard Laporan":
             c_baku = next((c for c in df_d.columns if 'BAKU' in c), None)
             c_tgl = next((c for c in df_d.columns if 'TANGGAL' in c or 'TGL' in c or 'DATE' in c), None)
             
-            df_d['H_NUM'] = pd.to_numeric(df_d[c_harga].astype(str).str.upper().str.replace('RP', '').str.replace(r'[^0-9]', '', regex=True), errors='coerce').fillna(0)
+            # --- PERBAIKAN V5.9: MENGGUNAKAN PARSE_HARGA AGAR ANTI-INFLASI 10X ---
+            df_d['H_NUM'] = df_d[c_harga].apply(parse_harga)
             df_d['Q_NUM'] = pd.to_numeric(df_d['QTY'].astype(str).str.replace(r'[^0-9.]', '', regex=True), errors='coerce').fillna(0)
             df_d['TOTAL'] = df_d['H_NUM'] * df_d['Q_NUM']
+            # ---------------------------------------------------------------------
+            
             df_d['DATE_CLEAN'] = pd.to_datetime(df_d[c_tgl], errors='coerce')
             df_d = df_d.dropna(subset=['DATE_CLEAN'])
             
@@ -1026,7 +1038,7 @@ elif menu == "Maintenance Data":
 st.markdown("---")
 st.markdown(
     "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v5.8 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
+    "ERP Purchasing System v5.9 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
     "</p>", 
     unsafe_allow_html=True
 )
