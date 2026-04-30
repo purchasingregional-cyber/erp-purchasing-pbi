@@ -2,7 +2,7 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 6.5 (EXECUTIVE EDITION + Ultra-Deep Multi-Sheet Scanner)
+# Versi: 6.6 (EXECUTIVE EDITION + Perfect Auto-Detect PGP Fix)
 # ==============================================================================
 
 import streamlit as st
@@ -262,15 +262,15 @@ if menu == "Pembersihan PO":
                 elif "Plant PGP" in pilihan_format:
                     detected_plant = "PGP"
                     is_new = False
-                    found_jenis = False
-                    found_harga = False
-                    for idx, row in df_input.head(30).iterrows():
-                        # PERBAIKAN 6.5: Hapus Spasi Ganda (Normalisasi Teks)
-                        teks_sebaris = " ".join([re.sub(r'\s+', ' ', str(c).strip().upper()) for c in row.values if pd.notna(c)])
-                        if "JENIS BARANG" in teks_sebaris or "NAMA BARANG" in teks_sebaris: found_jenis = True
-                        if "HARGA" in teks_sebaris: found_harga = True
                     
-                    format_type = "NEW" if (found_jenis and found_harga) else "OLD"
+                    # PERBAIKAN V6.6: Kunci deteksi yang solid. Cari tulisan spesifik format baru.
+                    for idx, row in df_input.head(20).iterrows():
+                        teks_sebaris = " ".join([str(c).strip().upper() for c in row.values if pd.notna(c)])
+                        if "REKAP FORMULIR" in teks_sebaris or "PENUNJUKKAN VENDOR" in teks_sebaris:
+                            is_new = True
+                            break
+                            
+                    format_type = "NEW" if is_new else "OLD"
 
                 # =======================================
                 # EKSEKUSI BERDASARKAN FORMAT
@@ -390,7 +390,6 @@ if menu == "Pembersihan PO":
                     for idx, row in df_input.head(30).iterrows():
                         for i, c in enumerate(row.values):
                             if pd.isna(c): continue
-                            # PERBAIKAN 6.5: Anti-Spasi Ganda per Cell
                             x_clean = re.sub(r'\s+', ' ', str(c).strip().upper())
                             
                             if ('JENIS BARANG' in x_clean or 'NAMA BARANG' in x_clean) and col_nama == -1: 
@@ -1076,7 +1075,7 @@ elif menu == "Maintenance Data":
 st.markdown("---")
 st.markdown(
     "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v6.5 | Proprietary of PT Panca Budi Idaman Tbk | Created with ❤️ for Raihan Subakti"
+    "ERP Purchasing System v6.6 | Proprietary of PT Panca Budi Idaman Tbk | Created with ❤️ for Raihan Subakti"
     "</p>", 
     unsafe_allow_html=True
 )
