@@ -2,7 +2,7 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 5.7 (EXECUTIVE EDITION + PIHC Deep Scan Fix)
+# Versi: 5.8 (EXECUTIVE EDITION + PIHC Multi-Tier Scanner Fix)
 # ==============================================================================
 
 import streamlit as st
@@ -330,34 +330,33 @@ if menu == "Pembersihan PO":
                                 "MATA UANG": curr_money, "ITEM_KOTOR": item_name, "QTY": qty_val, "HARGA": prc_val
                             })
 
-            # --- 3. LOGIKA BARU UNTUK PIHC (DEEP SCAN / SUBSTRING MATCHING) ---
+            # --- 3. LOGIKA BARU UNTUK PIHC (MULTI-TIER HEADER SCANNER) ---
             elif "PIHC" in pilihan_format:
-                st.info("🤖 Mata Pisau Khusus PIHC sedang memindai kolom secara dinamis (Deep Scan)...")
+                st.info("🤖 Mata Pisau Khusus PIHC sedang menjahit kolom beda baris (Anti-Merge Fix)...")
                 col_nama = col_qty = col_harga = col_vendor = col_po = col_tgl = -1
-                header_found = False
+                start_idx = 0
                 
-                for idx, row in df_input.iterrows():
-                    # Bersihkan enter (\n) yang disembunyikan di dalam kolom
+                # Scan 20 baris pertama untuk mencari di kolom ke-berapa header itu berada
+                for idx, row in df_input.head(20).iterrows():
                     row_upper = [str(c).strip().upper().replace('\n', ' ') for c in row.values]
                     
-                    # Cek keberadaan kata kunci secara fleksibel (Substring)
-                    teks_sebaris = " ".join(row_upper)
-                    if "JENIS BARANG" in teks_sebaris and "HARGA" in teks_sebaris and "VENDOR" in teks_sebaris:
-                        for i, x in enumerate(row_upper):
-                            if 'JENIS BARANG' in x: col_nama = i
-                            elif 'HARGA' in x and 'PER' not in x and 'UPDATE' not in x: col_harga = i
-                            elif 'VENDOR' in x and 'PENUNJUKKAN' not in x: col_vendor = i
-                            elif 'QTY' in x: col_qty = i
-                            elif 'NO PO' in x: col_po = i
-                            elif 'PENYELESAIAN' in x or 'TGL EMAIL' in x: 
-                                if col_tgl == -1: col_tgl = i
-                        
-                        if col_nama != -1 and col_harga != -1:
-                            header_found = True
-                            break
+                    for i, x in enumerate(row_upper):
+                        if 'JENIS BARANG' in x and col_nama == -1: 
+                            col_nama = i; start_idx = max(start_idx, idx)
+                        elif 'HARGA' in x and 'PER' not in x and 'UPDATE' not in x and col_harga == -1: 
+                            col_harga = i; start_idx = max(start_idx, idx)
+                        elif 'VENDOR' in x and 'PENUNJUKKAN' not in x and col_vendor == -1: 
+                            col_vendor = i; start_idx = max(start_idx, idx)
+                        elif ('QTY' in x) and col_qty == -1: 
+                            col_qty = i
+                        elif 'NO PO' in x and col_po == -1: 
+                            col_po = i
+                        elif ('PENYELESAIAN' in x or 'TGL EMAIL' in x) and col_tgl == -1: 
+                            col_tgl = i
                             
-                if header_found and col_nama != -1 and col_harga != -1:
-                    for idx, row in df_input.iloc[idx+1:].iterrows():
+                # Jika komponen utama ketemu, mulai ekstrak data persis di bawahnya
+                if col_nama != -1 and col_harga != -1:
+                    for idx, row in df_input.iloc[start_idx+1:].iterrows():
                         val_list = [str(c).strip() for c in row.values if str(c).strip() not in ['nan', 'None', '']]
                         if not val_list: continue
                         
@@ -371,7 +370,7 @@ if menu == "Pembersihan PO":
                             qty_val = parse_numeric(row.values[col_qty]) if col_qty != -1 else 1.0
                             prc_val = parse_numeric(row.values[col_harga])
                             
-                            # Filter anti-batal: Kalau harga kosong atau 0, buang barisnya
+                            # Filter anti-batal/merah: Kalau harga kosong, 0, atau "#VALUE!", abaikan baris ini
                             if prc_val is None or prc_val == 0: continue 
                             
                             v_str = str(row.values[col_vendor]).strip() if col_vendor != -1 else "-"
@@ -397,7 +396,7 @@ if menu == "Pembersihan PO":
                                 "MATA UANG": "RP", "ITEM_KOTOR": item_name, "QTY": qty_val, "HARGA": prc_val
                             })
                         except Exception: pass
-                else: st.error("Gagal menemukan Header secara Deep Scan. Pastikan ada tulisan 'Jenis Barang' dan 'Harga' di dalam file.")
+                else: st.error("Gagal menemukan Header multi-baris. Pastikan ada 'Jenis Barang' dan 'Harga'.")
 
             # --- 4. LOGIKA ERP PUSAT (LAMA) ---
             elif "ERP Pusat" in pilihan_format:
@@ -1027,7 +1026,7 @@ elif menu == "Maintenance Data":
 st.markdown("---")
 st.markdown(
     "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v5.7 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
+    "ERP Purchasing System v5.8 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
     "</p>", 
     unsafe_allow_html=True
 )
