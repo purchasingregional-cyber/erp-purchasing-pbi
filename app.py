@@ -2,7 +2,7 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 5.5 (EXECUTIVE EDITION - Export to Native Excel .xlsx)
+# Versi: 5.6 (EXECUTIVE EDITION + Plant PIHC Integration)
 # ==============================================================================
 
 import streamlit as st
@@ -184,7 +184,7 @@ with st.sidebar:
         menu_title="", 
         options=["Pembersihan PO", "Pencarian Barang", "E-Catalog & Studio", "Database Vendor", "Dashboard Laporan", "Maintenance Data"],
         icons=["magic", "search", "images", "shop", "bar-chart-line", "tools"], 
-        default_index=4, 
+        default_index=0, 
         styles={
             "container": {"padding": "0!important", "background-color": "transparent"},
             "icon": {"color": "#64748B", "font-size": "18px"}, 
@@ -202,11 +202,13 @@ if menu == "Pembersihan PO":
     
     col_sel, col_empty = st.columns([1.5, 1])
     with col_sel:
+        # PERUBAHAN V5.6: Tambah Plant PIHC
         pilihan_format = st.selectbox("🏢 Pilih Asal Laporan / Format Pabrik:", 
                                      ["Plant RA (ra pembelian.xls)", 
                                       "Plant PGP (Laporan PO per Bukti)", 
                                       "Plant Ceper (Laporan PO per Bukti)", 
                                       "Plant Pemalang (Laporan PO per Bukti)",
+                                      "Plant PIHC (Rekap Formulir Permintaan)",
                                       "ERP Pusat (Include/Exclude)"])
 
     with st.form("upload_holding"):
@@ -218,6 +220,7 @@ if menu == "Pembersihan PO":
             df_input = pd.read_excel(file_raw, header=None)
             extracted_rows = []
 
+            # --- 1. LOGIKA PLANT RA ---
             if "Plant RA" in pilihan_format:
                 st.info("🤖 Mesin Khusus RA memindai struktur kolom secara dinamis...")
                 curr_po, curr_tgl, curr_vendor = "-", "-", "-"
@@ -265,6 +268,7 @@ if menu == "Pembersihan PO":
                                     })
                 else: st.error("Gagal menemukan Header 'Nama Barang', 'Qty', dan 'Harga' pada file ini. Pastikan file RA asli.")
 
+            # --- 2. LOGIKA GABUNGAN (PGP, CEPER, PEMALANG) ---
             elif any(plant in pilihan_format for plant in ["PGP", "Ceper", "Pemalang"]):
                 if "PGP" in pilihan_format: detected_plant = "PGP"
                 elif "Ceper" in pilihan_format: detected_plant = "CEPER"
@@ -327,6 +331,78 @@ if menu == "Pembersihan PO":
                                 "MATA UANG": curr_money, "ITEM_KOTOR": item_name, "QTY": qty_val, "HARGA": prc_val
                             })
 
+            # --- 3. LOGIKA BARU UNTUK PIHC (REKAP FORMULIR) ---
+            elif "PIHC" in pilihan_format:
+                st.info("🤖 Mata Pisau Khusus PIHC sedang memindai kolom secara dinamis...")
+                col_nama = col_qty = col_harga = col_vendor = col_po = col_tgl = -1
+                header_found = False
+                
+                for idx, row in df_input.iterrows():
+                    row_upper = [str(c).strip().upper() for c in row.values]
+                    
+                    # PIHC pasti punya kolom Jenis Barang, Harga, dan Vendor
+                    if "JENIS BARANG" in row_upper and "HARGA" in row_upper and "VENDOR" in row_upper:
+                        col_nama = row_upper.index("JENIS BARANG")
+                        col_harga = row_upper.index("HARGA")
+                        col_vendor = row_upper.index("VENDOR")
+                        
+                        for i, x in enumerate(row_upper):
+                            if x == 'QTY1' or x == 'QTY': col_qty = i
+                            if 'NO PO' in x: col_po = i
+                            if 'TANGGAL PENYELESAIAN' in x or 'TGL EMAIL' in x: 
+                                if col_tgl == -1: col_tgl = i 
+                        header_found = True
+                        break
+                        
+                if header_found and col_nama != -1 and col_harga != -1:
+                    # Mulai ekstrak dari baris tepat di bawah Header
+                    for idx, row in df_input.iloc[idx+1:].iterrows():
+                        val_list = [str(c).strip() for c in row.values if str(c).strip() not in ['nan', 'None', '']]
+                        if not val_list: continue
+                        
+                        line_text = " | ".join(val_list).upper()
+                        if any(x in line_text for x in ["SUBTOTAL", "TOTAL", "REKAP FORMULIR"]): continue
+                        
+                        try:
+                            item_name = str(row.values[col_nama]).strip()
+                            if item_name.lower() in ['', 'nan', 'none']: continue
+                            
+                            qty_val = parse_numeric(row.values[col_qty]) if col_qty != -1 else 1.0
+                            prc_val = parse_numeric(row.values[col_harga])
+                            
+                            # Logika Khusus PIHC: Kalau Harga kosong (Biasanya karena Cancel/Hold), buang!
+                            if prc_val is None or prc_val == 0: continue 
+                            
+                            v_str = str(row.values[col_vendor]).strip() if col_vendor != -1 else "-"
+                            vendor_val = v_str if v_str.lower() not in ['nan', 'none', ''] else "CASH / TANPA NAMA"
+                            
+                            po_str = str(row.values[col_po]).strip() if col_po != -1 else "-"
+                            po_val = po_str if po_str.lower() not in ['nan', 'none', ''] else "-"
+                            
+                            # Ekstraksi Tanggal Dinamis (seperti 21-Apr atau 2026-04-21)
+                            tgl_val = "-"
+                            if col_tgl != -1:
+                                tgl_str = str(row.values[col_tgl]).strip()
+                                if tgl_str.lower() not in ['nan', 'none', '']:
+                                    if "00:00:00" in tgl_str: tgl_val = tgl_str.split(" ")[0]
+                                    else: tgl_val = tgl_str
+                            
+                            # Jika kolom tanggal kosong, cari tanggal di seluruh baris
+                            if tgl_val == "-":
+                                for v in val_list:
+                                    m = re.search(r'\d{1,2}-[a-zA-Z]{3}-?\d{0,4}|\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', v)
+                                    if m:
+                                        tgl_val = m.group(0)
+                                        break
+                                        
+                            extracted_rows.append({
+                                "UNIT KERJA": "PIHC", "NO PO": po_val, "TANGGAL": tgl_val, "VENDOR": vendor_val,
+                                "MATA UANG": "RP", "ITEM_KOTOR": item_name, "QTY": qty_val, "HARGA": prc_val
+                            })
+                        except Exception: pass
+                else: st.error("Gagal menemukan susunan kolom 'Jenis Barang', 'Harga', dan 'Vendor' pada file PIHC ini.")
+
+            # --- 4. LOGIKA ERP PUSAT (LAMA) ---
             elif "ERP Pusat" in pilihan_format:
                 st.info("🤖 Mesin ERP Pusat sedang bekerja...")
                 curr_po, curr_tgl, curr_vendor, curr_money = "-", "-", "-", "RP"
@@ -372,6 +448,7 @@ if menu == "Pembersihan PO":
                                     "MATA UANG": curr_money, "ITEM_KOTOR": item_name, "QTY": nums[0], "HARGA": nums[-1]
                                 })
 
+            # --- AI MATCHING & DRAFT PREPARATION ---
             if extracted_rows:
                 st.success(f"✔️ Berhasil mengekstrak {len(extracted_rows)} baris data mentah yang valid.")
                 final_draft = []
@@ -673,18 +750,13 @@ elif menu == "Dashboard Laporan":
                 if filter_unit != "All Facilities":
                     df_filtered = df_filtered[df_filtered[c_unit] == filter_unit]
                 
-                # --- PERUBAHAN V5.5: EXPORT KE NATIVE EXCEL (.XLSX) ---
                 with c_export:
                     st.write("") 
                     st.write("")
-                    
-                    # Membuat file Excel di memori
                     buffer = io.BytesIO()
                     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                        # Buang kolom bantuan agar excelnya bersih
                         df_to_export = df_filtered.drop(columns=['H_NUM', 'Q_NUM', 'DATE_CLEAN'], errors='ignore')
                         df_to_export.to_excel(writer, index=False, sheet_name='Laporan Transaksi')
-                    
                     excel_data = buffer.getvalue()
                     
                     st.download_button(
@@ -694,7 +766,6 @@ elif menu == "Dashboard Laporan":
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
                         use_container_width=True
                     )
-                # --------------------------------------------------------
 
                 st.markdown("---")
                 
@@ -959,7 +1030,7 @@ elif menu == "Maintenance Data":
 st.markdown("---")
 st.markdown(
     "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v5.5 | Proprietary of PT Panca Budi Idaman Tbk | Created with ❤️ for Raihan Subakti"
+    "ERP Purchasing System v5.6 | Proprietary of PT Panca Budi Idaman Tbk | Created with ❤️ for Raihan Subakti"
     "</p>", 
     unsafe_allow_html=True
 )
