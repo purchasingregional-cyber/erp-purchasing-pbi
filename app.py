@@ -2,7 +2,7 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 6.7 (EXECUTIVE EDITION + Clean Excel Downloader)
+# Versi: 6.8 (EXECUTIVE EDITION + RA Smart Auto-Detect & Multi-Sheet)
 # ==============================================================================
 
 import streamlit as st
@@ -215,8 +215,9 @@ if menu == "Pembersihan PO":
     
     col_sel, col_empty = st.columns([1.5, 1])
     with col_sel:
+        # PERUBAHAN V6.8: Menggabungkan menu RA menjadi Auto-Detect
         pilihan_format = st.selectbox("🏢 Pilih Asal Laporan / Format Pabrik:", 
-                                     ["Plant RA (ra pembelian.xls)", 
+                                     ["Plant RA (Auto-Detect Format)", 
                                       "Plant PGP (Auto-Detect Format)",
                                       "Plant Ceper (Laporan PO per Bukti)", 
                                       "Plant Pemalang (Laporan PO per Bukti)",
@@ -233,7 +234,7 @@ if menu == "Pembersihan PO":
             extracted_rows = []
             
             if "Plant RA" in pilihan_format:
-                st.info("🤖 Mesin Khusus RA memindai seluruh sheet secara dinamis...")
+                st.info("🤖 Mesin Smart-Detect RA sedang memindai format (Lama/Baru) pada seluruh sheet...")
             elif "Plant PGP" in pilihan_format:
                 st.info("🤖 Mesin Smart-Detect PGP sedang memindai format (Lama/Baru) pada seluruh sheet...")
             elif "Ceper" in pilihan_format or "Pemalang" in pilihan_format:
@@ -248,10 +249,8 @@ if menu == "Pembersihan PO":
                 format_type = ""
                 detected_plant = ""
 
-                # --- PENENTUAN FORMAT SECARA DINAMIS ---
-                if "Plant RA" in pilihan_format:
-                    format_type = "RA"; detected_plant = "RA"
-                elif "ERP Pusat" in pilihan_format:
+                # --- PENENTUAN FORMAT SECARA DINAMIS DENGAN SUPER SCANNER ---
+                if "ERP Pusat" in pilihan_format:
                     format_type = "PUSAT"; detected_plant = "PUSAT"
                 elif "Ceper" in pilihan_format:
                     format_type = "OLD"; detected_plant = "CEPER"
@@ -259,6 +258,15 @@ if menu == "Pembersihan PO":
                     format_type = "OLD"; detected_plant = "PEMALANG"
                 elif "PIHC" in pilihan_format:
                     format_type = "NEW"; detected_plant = "PIHC"
+                elif "Plant RA" in pilihan_format:
+                    detected_plant = "RA"
+                    is_new = False
+                    for idx, row in df_input.head(20).iterrows():
+                        teks_sebaris = " ".join([str(c).strip().upper() for c in row.values if pd.notna(c)])
+                        if "REKAP FORMULIR" in teks_sebaris or "PENUNJUKKAN VENDOR" in teks_sebaris:
+                            is_new = True
+                            break
+                    format_type = "NEW" if is_new else "RA_OLD"
                 elif "Plant PGP" in pilihan_format:
                     detected_plant = "PGP"
                     is_new = False
@@ -267,13 +275,12 @@ if menu == "Pembersihan PO":
                         if "REKAP FORMULIR" in teks_sebaris or "PENUNJUKKAN VENDOR" in teks_sebaris:
                             is_new = True
                             break
-                            
                     format_type = "NEW" if is_new else "OLD"
 
                 # =======================================
                 # EKSEKUSI BERDASARKAN FORMAT
                 # =======================================
-                if format_type == "RA":
+                if format_type == "RA_OLD":
                     curr_po, curr_tgl, curr_vendor = "-", "-", "-"
                     col_nama, col_qty, col_harga = -1, -1, -1
                     
@@ -579,7 +586,6 @@ if menu == "Pembersihan PO":
         with c2:
             if st.button("❌ Batalkan Semua", use_container_width=True): del st.session_state['holding_draft']; st.rerun()
             
-        # --- FITUR BARU 6.7: DOWNLOAD EXCEL RAPI ---
         st.markdown("<br>", unsafe_allow_html=True)
         try:
             df_to_export = edited_df[edited_df["❌ BUKAN SCOPE"] == False]
@@ -1111,7 +1117,7 @@ elif menu == "Maintenance Data":
 st.markdown("---")
 st.markdown(
     "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v6.7 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
+    "ERP Purchasing System v6.8 | Proprietary of PT Panca Budi Idaman Tbk | Created with ❤️ for Raihan Subakti"
     "</p>", 
     unsafe_allow_html=True
 )
