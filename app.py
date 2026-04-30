@@ -2,7 +2,7 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 6.9 (EXECUTIVE EDITION + Tangerang Auto-Detect & FPB Sensor)
+# Versi: 7.0 (EXECUTIVE EDITION + Pemalang Smart Auto-Detect Integration)
 # ==============================================================================
 
 import streamlit as st
@@ -215,12 +215,12 @@ if menu == "Pembersihan PO":
     
     col_sel, col_empty = st.columns([1.5, 1])
     with col_sel:
-        # PERUBAHAN V6.9: Ceper diganti menjadi Tangerang (Auto-Detect)
+        # PERUBAHAN V7.0: Pemalang sekarang masuk ekosistem Auto-Detect!
         pilihan_format = st.selectbox("🏢 Pilih Asal Laporan / Format Pabrik:", 
                                      ["Plant RA (Auto-Detect Format)", 
                                       "Plant PGP (Auto-Detect Format)",
                                       "Plant Tangerang (Auto-Detect Format)", 
-                                      "Plant Pemalang (Laporan PO per Bukti)",
+                                      "Plant Pemalang (Auto-Detect Format)",
                                       "Plant PIHC (Rekap Formulir Permintaan)",
                                       "ERP Pusat (Include/Exclude)"])
 
@@ -239,8 +239,8 @@ if menu == "Pembersihan PO":
                 st.info("🤖 Mesin Smart-Detect PGP sedang memindai format (Lama/Baru) pada seluruh sheet...")
             elif "Plant Tangerang" in pilihan_format:
                 st.info("🤖 Mesin Smart-Detect Tangerang sedang memindai format (Lama/Baru) pada seluruh sheet...")
-            elif "Pemalang" in pilihan_format:
-                st.info("🤖 Mesin Traktor bekerja untuk format Laporan PO per Bukti (PEMALANG) pada seluruh sheet...")
+            elif "Plant Pemalang" in pilihan_format:
+                st.info("🤖 Mesin Smart-Detect Pemalang sedang memindai format (Lama/Baru) pada seluruh sheet...")
             elif "PIHC" in pilihan_format:
                 st.info("🤖 Mata Pisau Khusus PIHC menjahit kolom beda baris di seluruh sheet...")
             elif "ERP Pusat" in pilihan_format:
@@ -253,8 +253,6 @@ if menu == "Pembersihan PO":
                 # --- PENENTUAN FORMAT SECARA DINAMIS DENGAN SUPER SCANNER ---
                 if "ERP Pusat" in pilihan_format:
                     format_type = "PUSAT"; detected_plant = "PUSAT"
-                elif "Pemalang" in pilihan_format:
-                    format_type = "OLD"; detected_plant = "PEMALANG"
                 elif "PIHC" in pilihan_format:
                     format_type = "NEW"; detected_plant = "PIHC"
                 elif "Plant RA" in pilihan_format:
@@ -280,7 +278,15 @@ if menu == "Pembersihan PO":
                     is_new = False
                     for idx, row in df_input.head(20).iterrows():
                         teks_sebaris = " ".join([str(c).strip().upper() for c in row.values if pd.notna(c)])
-                        # Auto-detect untuk Tangerang
+                        if "REKAP FORMULIR" in teks_sebaris or "PENUNJUKKAN VENDOR" in teks_sebaris or "FORMULIR PERMINTAAN" in teks_sebaris:
+                            is_new = True
+                            break
+                    format_type = "NEW" if is_new else "OLD"
+                elif "Plant Pemalang" in pilihan_format:
+                    detected_plant = "PEMALANG"
+                    is_new = False
+                    for idx, row in df_input.head(20).iterrows():
+                        teks_sebaris = " ".join([str(c).strip().upper() for c in row.values if pd.notna(c)])
                         if "REKAP FORMULIR" in teks_sebaris or "PENUNJUKKAN VENDOR" in teks_sebaris or "FORMULIR PERMINTAAN" in teks_sebaris:
                             is_new = True
                             break
@@ -414,7 +420,6 @@ if menu == "Pembersihan PO":
                                 col_vendor = i; start_idx = max(start_idx, idx)
                             elif ('QTY' in x_clean) and col_qty == -1: 
                                 col_qty = i
-                            # PERBAIKAN 6.9: Tambah NO. FPB dan NO FPB sebagai pengganti Nomor PO (Khusus Tangerang dll)
                             elif ('NO PO' in x_clean or 'NOMOR PO' in x_clean or 'NO. PO' in x_clean or 'NO FPB' in x_clean or 'NO. FPB' in x_clean) and col_po == -1: 
                                 col_po = i
                             elif ('PENYELESAIAN' in x_clean or 'TGL EMAIL' in x_clean or 'DATANG' in x_clean) and col_tgl == -1: 
@@ -1127,7 +1132,7 @@ elif menu == "Maintenance Data":
 st.markdown("---")
 st.markdown(
     "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v6.9 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
+    "ERP Purchasing System v7.0 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
     "</p>", 
     unsafe_allow_html=True
 )
