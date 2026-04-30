@@ -2,7 +2,7 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 6.1 (EXECUTIVE EDITION + PGP Smart Auto-Detect & Multi-Sheet)
+# Versi: 6.2 (EXECUTIVE EDITION + PGP Smart Column & Date Grabber)
 # ==============================================================================
 
 import streamlit as st
@@ -217,7 +217,6 @@ if menu == "Pembersihan PO":
     
     col_sel, col_empty = st.columns([1.5, 1])
     with col_sel:
-        # PERUBAHAN V6.1: PGP DISATUKAN DENGAN SMART AUTO-DETECT
         pilihan_format = st.selectbox("🏢 Pilih Asal Laporan / Format Pabrik:", 
                                      ["Plant RA (ra pembelian.xls)", 
                                       "Plant PGP (Auto-Detect Format)",
@@ -235,7 +234,6 @@ if menu == "Pembersihan PO":
             dict_df = pd.read_excel(file_raw, sheet_name=None, header=None)
             extracted_rows = []
             
-            # --- TAMPILKAN INFO STATUS MESIN ---
             if "Plant RA" in pilihan_format:
                 st.info("🤖 Mesin Khusus RA memindai seluruh sheet secara dinamis...")
             elif "Plant PGP" in pilihan_format:
@@ -248,36 +246,29 @@ if menu == "Pembersihan PO":
             elif "ERP Pusat" in pilihan_format:
                 st.info("🤖 Mesin ERP Pusat membaca seluruh sheet...")
 
-            # --- LOOPING SEMUA SHEET (JAN-1, JAN-2, dst) ---
+            # --- LOOPING SEMUA SHEET ---
             for sheet_name, df_input in dict_df.items():
                 format_type = ""
                 detected_plant = ""
 
                 # --- PENENTUAN FORMAT SECARA DINAMIS ---
                 if "Plant RA" in pilihan_format:
-                    format_type = "RA"
-                    detected_plant = "RA"
+                    format_type = "RA"; detected_plant = "RA"
                 elif "ERP Pusat" in pilihan_format:
-                    format_type = "PUSAT"
-                    detected_plant = "PUSAT"
+                    format_type = "PUSAT"; detected_plant = "PUSAT"
                 elif "Ceper" in pilihan_format:
-                    format_type = "OLD"
-                    detected_plant = "CEPER"
+                    format_type = "OLD"; detected_plant = "CEPER"
                 elif "Pemalang" in pilihan_format:
-                    format_type = "OLD"
-                    detected_plant = "PEMALANG"
+                    format_type = "OLD"; detected_plant = "PEMALANG"
                 elif "PIHC" in pilihan_format:
-                    format_type = "NEW"
-                    detected_plant = "PIHC"
+                    format_type = "NEW"; detected_plant = "PIHC"
                 elif "Plant PGP" in pilihan_format:
                     detected_plant = "PGP"
                     is_new = False
-                    # Auto-detect PGP: Cari kata JENIS BARANG dan HARGA di 30 baris awal
                     for idx, row in df_input.head(30).iterrows():
                         teks_sebaris = " ".join([str(c).strip().upper().replace('\n', ' ') for c in row.values])
                         if "JENIS BARANG" in teks_sebaris and "HARGA" in teks_sebaris:
-                            is_new = True
-                            break
+                            is_new = True; break
                     format_type = "NEW" if is_new else "OLD"
 
                 # =======================================
@@ -387,11 +378,21 @@ if menu == "Pembersihan PO":
                                     "MATA UANG": curr_money, "ITEM_KOTOR": item_name, "QTY": qty_val, "HARGA": prc_val
                                 })
 
-                # --- 3. LOGIKA NEW (PIHC & PGP BARU) ---
+                # --- 3. LOGIKA NEW (PIHC & PGP BARU) DENGAN SMART COLUMN ---
                 elif format_type == "NEW":
                     col_nama = col_qty = col_harga = col_vendor = col_po = col_tgl = -1
                     start_idx = 0
+                    global_date = "-"
                     
+                    # 1. Grab Global Date dari atas Excel (Misal: Tanggal Rekap : 05 JANUARI 2026)
+                    for idx_g, row_g in df_input.head(15).iterrows():
+                        text_g = " ".join([str(c).strip().upper() for c in row_g.values if pd.notna(c)])
+                        m_g = re.search(r'\d{1,2}\s+[A-Z]+\s+\d{4}|\d{1,2}-[A-Z]{3}-?\d{0,4}|\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', text_g)
+                        if m_g and ("TANGGAL" in text_g or "DATE" in text_g or "TGL" in text_g):
+                            global_date = m_g.group(0)
+                            break
+
+                    # 2. Cari Kolom secara dinamis
                     for idx, row in df_input.head(30).iterrows():
                         row_upper = [str(c).strip().upper().replace('\n', ' ') for c in row.values]
                         
@@ -404,11 +405,13 @@ if menu == "Pembersihan PO":
                                 col_vendor = i; start_idx = max(start_idx, idx)
                             elif ('QTY' in x) and col_qty == -1: 
                                 col_qty = i
-                            elif 'NO PO' in x and col_po == -1: 
+                            # PERBAIKAN: Cari kata "PO" atau "DATANG" agar cocok dengan NOMOR PO & TGL BARANG DATANG
+                            elif ('PO' in x) and ('LAPORAN' not in x) and col_po == -1: 
                                 col_po = i
-                            elif ('PENYELESAIAN' in x or 'TGL EMAIL' in x) and col_tgl == -1: 
+                            elif ('PENYELESAIAN' in x or 'TGL EMAIL' in x or 'DATANG' in x) and col_tgl == -1: 
                                 col_tgl = i
                                 
+                    # 3. Mulai Ekstraksi Data
                     if col_nama != -1 and col_harga != -1:
                         for idx, row in df_input.iloc[start_idx+1:].iterrows():
                             val_list = [str(c).strip() for c in row.values if str(c).strip() not in ['nan', 'None', '']]
@@ -439,10 +442,14 @@ if menu == "Pembersihan PO":
                                         if "00:00:00" in tgl_str: tgl_val = tgl_str.split(" ")[0]
                                         else: tgl_val = tgl_str
                                 
+                                # Jika tanggal per item kosong, pakai fallback regex atau Global Date!
                                 if tgl_val == "-":
                                     for v in val_list:
                                         m = re.search(r'\d{1,2}-[a-zA-Z]{3}-?\d{0,4}|\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', v)
                                         if m: tgl_val = m.group(0); break
+                                
+                                if tgl_val == "-" and global_date != "-":
+                                    tgl_val = global_date
                                             
                                 extracted_rows.append({
                                     "UNIT KERJA": detected_plant, "NO PO": po_val, "TANGGAL": tgl_val, "VENDOR": vendor_val,
@@ -1078,7 +1085,7 @@ elif menu == "Maintenance Data":
 st.markdown("---")
 st.markdown(
     "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v6.1 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
+    "ERP Purchasing System v6.2 | Proprietary of PT Panca Budi Idaman Tbk | Created with ❤️ for Raihan Subakti"
     "</p>", 
     unsafe_allow_html=True
 )
