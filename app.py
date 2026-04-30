@@ -2,7 +2,7 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 7.0 (EXECUTIVE EDITION + Pemalang Smart Auto-Detect Integration)
+# Versi: 7.1 (EXECUTIVE EDITION + Solo Smart Auto-Detect Integration)
 # ==============================================================================
 
 import streamlit as st
@@ -215,12 +215,13 @@ if menu == "Pembersihan PO":
     
     col_sel, col_empty = st.columns([1.5, 1])
     with col_sel:
-        # PERUBAHAN V7.0: Pemalang sekarang masuk ekosistem Auto-Detect!
+        # PERUBAHAN V7.1: Tambah Plant Solo ke daftar Dropdown
         pilihan_format = st.selectbox("🏢 Pilih Asal Laporan / Format Pabrik:", 
                                      ["Plant RA (Auto-Detect Format)", 
                                       "Plant PGP (Auto-Detect Format)",
                                       "Plant Tangerang (Auto-Detect Format)", 
                                       "Plant Pemalang (Auto-Detect Format)",
+                                      "Plant Solo (Auto-Detect Format)",
                                       "Plant PIHC (Rekap Formulir Permintaan)",
                                       "ERP Pusat (Include/Exclude)"])
 
@@ -241,6 +242,8 @@ if menu == "Pembersihan PO":
                 st.info("🤖 Mesin Smart-Detect Tangerang sedang memindai format (Lama/Baru) pada seluruh sheet...")
             elif "Plant Pemalang" in pilihan_format:
                 st.info("🤖 Mesin Smart-Detect Pemalang sedang memindai format (Lama/Baru) pada seluruh sheet...")
+            elif "Plant Solo" in pilihan_format:
+                st.info("🤖 Mesin Smart-Detect Solo sedang memindai format (Lama/Baru) pada seluruh sheet...")
             elif "PIHC" in pilihan_format:
                 st.info("🤖 Mata Pisau Khusus PIHC menjahit kolom beda baris di seluruh sheet...")
             elif "ERP Pusat" in pilihan_format:
@@ -284,6 +287,15 @@ if menu == "Pembersihan PO":
                     format_type = "NEW" if is_new else "OLD"
                 elif "Plant Pemalang" in pilihan_format:
                     detected_plant = "PEMALANG"
+                    is_new = False
+                    for idx, row in df_input.head(20).iterrows():
+                        teks_sebaris = " ".join([str(c).strip().upper() for c in row.values if pd.notna(c)])
+                        if "REKAP FORMULIR" in teks_sebaris or "PENUNJUKKAN VENDOR" in teks_sebaris or "FORMULIR PERMINTAAN" in teks_sebaris:
+                            is_new = True
+                            break
+                    format_type = "NEW" if is_new else "OLD"
+                elif "Plant Solo" in pilihan_format:
+                    detected_plant = "SOLO"
                     is_new = False
                     for idx, row in df_input.head(20).iterrows():
                         teks_sebaris = " ".join([str(c).strip().upper() for c in row.values if pd.notna(c)])
@@ -1132,7 +1144,7 @@ elif menu == "Maintenance Data":
 st.markdown("---")
 st.markdown(
     "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v7.0 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
+    "ERP Purchasing System v7.1 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
     "</p>", 
     unsafe_allow_html=True
 )
