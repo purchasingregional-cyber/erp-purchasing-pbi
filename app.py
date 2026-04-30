@@ -2,7 +2,7 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 5.9 (EXECUTIVE EDITION + Fix Inflasi Siluman / Decimal Bug)
+# Versi: 6.1 (EXECUTIVE EDITION + PGP Smart Auto-Detect & Multi-Sheet)
 # ==============================================================================
 
 import streamlit as st
@@ -87,7 +87,6 @@ def format_rupiah(angka):
         val = str(angka).strip()
         if val.upper() in ['NAN', 'NONE', '']: return "Rp 0"
         
-        # PERBAIKAN: Buang .0 atau ,00 di belakang sebelum dibersihkan agar tidak inflasi
         if val.endswith('.0'): val = val[:-2]
         if val.endswith(',00'): val = val[:-3]
         
@@ -100,7 +99,6 @@ def parse_harga(x):
     try:
         s = str(x).upper().replace('RP', '').replace('IDR', '').strip()
         
-        # PERBAIKAN: Buang desimal siluman dari float Pandas
         if s.endswith('.0'): s = s[:-2]
         if s.endswith(',00'): s = s[:-3]
         
@@ -219,9 +217,10 @@ if menu == "Pembersihan PO":
     
     col_sel, col_empty = st.columns([1.5, 1])
     with col_sel:
+        # PERUBAHAN V6.1: PGP DISATUKAN DENGAN SMART AUTO-DETECT
         pilihan_format = st.selectbox("🏢 Pilih Asal Laporan / Format Pabrik:", 
                                      ["Plant RA (ra pembelian.xls)", 
-                                      "Plant PGP (Laporan PO per Bukti)", 
+                                      "Plant PGP (Auto-Detect Format)",
                                       "Plant Ceper (Laporan PO per Bukti)", 
                                       "Plant Pemalang (Laporan PO per Bukti)",
                                       "Plant PIHC (Rekap Formulir Permintaan)",
@@ -233,210 +232,137 @@ if menu == "Pembersihan PO":
 
     if btn_proses and file_raw:
         try:
-            df_input = pd.read_excel(file_raw, header=None)
+            dict_df = pd.read_excel(file_raw, sheet_name=None, header=None)
             extracted_rows = []
-
+            
+            # --- TAMPILKAN INFO STATUS MESIN ---
             if "Plant RA" in pilihan_format:
-                st.info("🤖 Mesin Khusus RA memindai struktur kolom secara dinamis...")
-                curr_po, curr_tgl, curr_vendor = "-", "-", "-"
-                col_nama, col_qty, col_harga = -1, -1, -1
+                st.info("🤖 Mesin Khusus RA memindai seluruh sheet secara dinamis...")
+            elif "Plant PGP" in pilihan_format:
+                st.info("🤖 Mesin Smart-Detect PGP sedang memindai format (Lama/Baru) pada seluruh sheet...")
+            elif "Ceper" in pilihan_format or "Pemalang" in pilihan_format:
+                detected_plant = "CEPER" if "Ceper" in pilihan_format else "PEMALANG"
+                st.info(f"🤖 Mesin Traktor bekerja untuk format Laporan PO per Bukti ({detected_plant}) pada seluruh sheet...")
+            elif "PIHC" in pilihan_format:
+                st.info("🤖 Mata Pisau Khusus PIHC menjahit kolom beda baris di seluruh sheet...")
+            elif "ERP Pusat" in pilihan_format:
+                st.info("🤖 Mesin ERP Pusat membaca seluruh sheet...")
+
+            # --- LOOPING SEMUA SHEET (JAN-1, JAN-2, dst) ---
+            for sheet_name, df_input in dict_df.items():
+                format_type = ""
+                detected_plant = ""
+
+                # --- PENENTUAN FORMAT SECARA DINAMIS ---
+                if "Plant RA" in pilihan_format:
+                    format_type = "RA"
+                    detected_plant = "RA"
+                elif "ERP Pusat" in pilihan_format:
+                    format_type = "PUSAT"
+                    detected_plant = "PUSAT"
+                elif "Ceper" in pilihan_format:
+                    format_type = "OLD"
+                    detected_plant = "CEPER"
+                elif "Pemalang" in pilihan_format:
+                    format_type = "OLD"
+                    detected_plant = "PEMALANG"
+                elif "PIHC" in pilihan_format:
+                    format_type = "NEW"
+                    detected_plant = "PIHC"
+                elif "Plant PGP" in pilihan_format:
+                    detected_plant = "PGP"
+                    is_new = False
+                    # Auto-detect PGP: Cari kata JENIS BARANG dan HARGA di 30 baris awal
+                    for idx, row in df_input.head(30).iterrows():
+                        teks_sebaris = " ".join([str(c).strip().upper().replace('\n', ' ') for c in row.values])
+                        if "JENIS BARANG" in teks_sebaris and "HARGA" in teks_sebaris:
+                            is_new = True
+                            break
+                    format_type = "NEW" if is_new else "OLD"
+
+                # =======================================
+                # EKSEKUSI BERDASARKAN FORMAT YANG TERDETEKSI
+                # =======================================
                 
-                for idx, row in df_input.iterrows():
-                    row_upper = [str(c).strip().upper() for c in row.values]
-                    if "NAMA BARANG" in row_upper and "HARGA" in row_upper:
-                        col_nama = row_upper.index("NAMA BARANG")
-                        col_harga = row_upper.index("HARGA")
-                        for i, x in enumerate(row_upper):
-                            if 'QTY' in x: col_qty = i; break
-                        break 
-                        
-                if col_nama != -1 and col_harga != -1 and col_qty != -1:
+                # --- 1. LOGIKA PLANT RA ---
+                if format_type == "RA":
+                    curr_po, curr_tgl, curr_vendor = "-", "-", "-"
+                    col_nama, col_qty, col_harga = -1, -1, -1
+                    
+                    for idx, row in df_input.iterrows():
+                        row_upper = [str(c).strip().upper() for c in row.values]
+                        if "NAMA BARANG" in row_upper and "HARGA" in row_upper:
+                            col_nama = row_upper.index("NAMA BARANG")
+                            col_harga = row_upper.index("HARGA")
+                            for i, x in enumerate(row_upper):
+                                if 'QTY' in x: col_qty = i; break
+                            break 
+                            
+                    if col_nama != -1 and col_harga != -1 and col_qty != -1:
+                        for idx, row in df_input.iterrows():
+                            val_list = [str(c).strip() for c in row.values if str(c).strip() not in ['nan', 'None', '']]
+                            if not val_list: continue
+                            line_text = " | ".join(val_list).upper()
+                            
+                            if any(x in line_text for x in ["SUBTOTAL", "TOTAL :", "LAP.PEMBELIAN", "PAGE"]): continue
+                            
+                            date_m = next((v for v in val_list if re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', v)), None)
+                            po_m = next((v for v in val_list if "PB" in v.upper() and len(v) > 5 and re.search(r'\d', v)), None)
+                            
+                            if date_m and po_m:
+                                curr_tgl = date_m.split(" ")[0]
+                                curr_po = po_m
+                                potensi_vendor = [v for v in val_list if v != date_m and v != po_m and not re.match(r'^[-0-9.,]+$', v) and "00/01/1900" not in v]
+                                curr_vendor = max(potensi_vendor, key=len).replace("00/01/1900", "").strip() if potensi_vendor else "CASH / TANPA NAMA"
+                                continue
+                                
+                            if curr_po != "-":
+                                if col_nama < len(row.values) and col_qty < len(row.values) and col_harga < len(row.values):
+                                    item_name = str(row.values[col_nama]).strip()
+                                    if item_name.lower() in ['', 'nan', 'none', 'nama barang', 'subtotal', 'subtotal :']: continue
+                                    
+                                    qty_val = parse_numeric(row.values[col_qty])
+                                    prc_val = parse_numeric(row.values[col_harga])
+                                    
+                                    if qty_val is not None and prc_val is not None:
+                                        extracted_rows.append({
+                                            "UNIT KERJA": detected_plant, "NO PO": curr_po, "TANGGAL": curr_tgl, "VENDOR": curr_vendor,
+                                            "MATA UANG": "RP", "ITEM_KOTOR": item_name, "QTY": qty_val, "HARGA": prc_val
+                                        })
+
+                # --- 2. LOGIKA OLD (PGP LAMA, CEPER, PEMALANG) ---
+                elif format_type == "OLD":
+                    curr_po, curr_tgl, curr_vendor, curr_money = "-", "-", "-", "RP"
+
                     for idx, row in df_input.iterrows():
                         val_list = [str(c).strip() for c in row.values if str(c).strip() not in ['nan', 'None', '']]
                         if not val_list: continue
                         line_text = " | ".join(val_list).upper()
-                        
-                        if any(x in line_text for x in ["SUBTOTAL", "TOTAL :", "LAP.PEMBELIAN", "PAGE"]): continue
-                        
-                        date_m = next((v for v in val_list if re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', v)), None)
-                        po_m = next((v for v in val_list if "PB" in v.upper() and len(v) > 5 and re.search(r'\d', v)), None)
-                        
-                        if date_m and po_m:
-                            curr_tgl = date_m.split(" ")[0]
-                            curr_po = po_m
-                            potensi_vendor = [v for v in val_list if v != date_m and v != po_m and not re.match(r'^[-0-9.,]+$', v) and "00/01/1900" not in v]
-                            curr_vendor = max(potensi_vendor, key=len).replace("00/01/1900", "").strip() if potensi_vendor else "CASH / TANPA NAMA"
+
+                        if any(x in line_text for x in ["SUBTOTAL", "GRAND TOTAL", "LAPORAN PO", "NO TRANS"]): continue
+
+                        if "INCLUDE" in line_text or "EXCLUDE" in line_text:
+                            curr_po = val_list[0]
+                            for c in val_list: 
+                                m = re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', c)
+                                if m: curr_tgl = m.group(0); break
+                                
+                            potensi_vendor = [v for v in val_list if " - " in v]
+                            if potensi_vendor:
+                                curr_vendor = potensi_vendor[-1].split(" - ")[-1].strip()
+                            else:
+                                curr_vendor = "CASH / TANPA NAMA"
+                                
+                            curr_money = "RP"
+                            for m in ["USD", "EUR", "CNY", "JPY"]:
+                                if m in line_text: curr_money = m; break
                             continue
                             
                         if curr_po != "-":
-                            if col_nama < len(row.values) and col_qty < len(row.values) and col_harga < len(row.values):
-                                item_name = str(row.values[col_nama]).strip()
-                                if item_name.lower() in ['', 'nan', 'none', 'nama barang', 'subtotal', 'subtotal :']: continue
-                                
-                                qty_val = parse_numeric(row.values[col_qty])
-                                prc_val = parse_numeric(row.values[col_harga])
-                                
-                                if qty_val is not None and prc_val is not None:
-                                    extracted_rows.append({
-                                        "UNIT KERJA": "RA", "NO PO": curr_po, "TANGGAL": curr_tgl, "VENDOR": curr_vendor,
-                                        "MATA UANG": "RP", "ITEM_KOTOR": item_name, "QTY": qty_val, "HARGA": prc_val
-                                    })
-                else: st.error("Gagal menemukan Header 'Nama Barang', 'Qty', dan 'Harga' pada file ini. Pastikan file RA asli.")
-
-            elif any(plant in pilihan_format for plant in ["PGP", "Ceper", "Pemalang"]):
-                if "PGP" in pilihan_format: detected_plant = "PGP"
-                elif "Ceper" in pilihan_format: detected_plant = "CEPER"
-                else: detected_plant = "PEMALANG"
-                
-                st.info(f"🤖 Mesin Traktor bekerja untuk format Laporan PO per Bukti ({detected_plant})...")
-                
-                curr_po, curr_tgl, curr_vendor, curr_money = "-", "-", "-", "RP"
-
-                for idx, row in df_input.iterrows():
-                    val_list = [str(c).strip() for c in row.values if str(c).strip() not in ['nan', 'None', '']]
-                    if not val_list: continue
-                    line_text = " | ".join(val_list).upper()
-
-                    if any(x in line_text for x in ["SUBTOTAL", "GRAND TOTAL", "LAPORAN PO", "NO TRANS"]): continue
-
-                    if "INCLUDE" in line_text or "EXCLUDE" in line_text:
-                        curr_po = val_list[0]
-                        for c in val_list: 
-                            m = re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', c)
-                            if m: curr_tgl = m.group(0); break
-                            
-                        potensi_vendor = [v for v in val_list if " - " in v]
-                        if potensi_vendor:
-                            curr_vendor = potensi_vendor[-1].split(" - ")[-1].strip()
-                        else:
-                            curr_vendor = "CASH / TANPA NAMA"
-                            
-                        curr_money = "RP"
-                        for m in ["USD", "EUR", "CNY", "JPY"]:
-                            if m in line_text: curr_money = m; break
-                        continue
-                        
-                    if curr_po != "-":
-                        nums = []
-                        for v in val_list:
-                            n = parse_numeric(v)
-                            if n is not None: nums.append(n)
-                        
-                        if len(nums) >= 2:
-                            names = []
-                            for v in val_list:
-                                v_str = str(v).strip()
-                                if parse_numeric(v_str) is not None: continue
-                                if re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', v_str): continue
-                                if v_str.upper() in ["RP", "USD", "EUR", "CNY", "IDR"]: continue
-                                
-                                v_clean = v_str.replace('\xa0', '').strip()
-                                if len(v_clean) >= 8 and " " not in v_clean and re.search(r'\d', v_clean):
-                                    continue 
-
-                                names.append(v_str)
-                            
-                            item_name = max(names, key=len) if names else "Unknown"
-                            qty_val = nums[1] if len(nums) > 1 else nums[0]
-                            prc_val = nums[2] if len(nums) > 2 else 0.0
-                            
-                            extracted_rows.append({
-                                "UNIT KERJA": detected_plant, "NO PO": curr_po, "TANGGAL": curr_tgl, "VENDOR": curr_vendor,
-                                "MATA UANG": curr_money, "ITEM_KOTOR": item_name, "QTY": qty_val, "HARGA": prc_val
-                            })
-
-            elif "PIHC" in pilihan_format:
-                st.info("🤖 Mata Pisau Khusus PIHC sedang menjahit kolom beda baris (Anti-Merge Fix)...")
-                col_nama = col_qty = col_harga = col_vendor = col_po = col_tgl = -1
-                start_idx = 0
-                
-                for idx, row in df_input.head(20).iterrows():
-                    row_upper = [str(c).strip().upper().replace('\n', ' ') for c in row.values]
-                    
-                    for i, x in enumerate(row_upper):
-                        if 'JENIS BARANG' in x and col_nama == -1: 
-                            col_nama = i; start_idx = max(start_idx, idx)
-                        elif 'HARGA' in x and 'PER' not in x and 'UPDATE' not in x and col_harga == -1: 
-                            col_harga = i; start_idx = max(start_idx, idx)
-                        elif 'VENDOR' in x and 'PENUNJUKKAN' not in x and col_vendor == -1: 
-                            col_vendor = i; start_idx = max(start_idx, idx)
-                        elif ('QTY' in x) and col_qty == -1: 
-                            col_qty = i
-                        elif 'NO PO' in x and col_po == -1: 
-                            col_po = i
-                        elif ('PENYELESAIAN' in x or 'TGL EMAIL' in x) and col_tgl == -1: 
-                            col_tgl = i
-                            
-                if col_nama != -1 and col_harga != -1:
-                    for idx, row in df_input.iloc[start_idx+1:].iterrows():
-                        val_list = [str(c).strip() for c in row.values if str(c).strip() not in ['nan', 'None', '']]
-                        if not val_list: continue
-                        
-                        line_text = " | ".join(val_list).upper()
-                        if any(x in line_text for x in ["SUBTOTAL", "TOTAL", "REKAP FORMULIR"]): continue
-                        
-                        try:
-                            item_name = str(row.values[col_nama]).strip()
-                            if item_name.lower() in ['', 'nan', 'none']: continue
-                            
-                            qty_val = parse_numeric(row.values[col_qty]) if col_qty != -1 else 1.0
-                            prc_val = parse_numeric(row.values[col_harga])
-                            
-                            if prc_val is None or prc_val == 0: continue 
-                            
-                            v_str = str(row.values[col_vendor]).strip() if col_vendor != -1 else "-"
-                            vendor_val = v_str if v_str.lower() not in ['nan', 'none', ''] else "CASH / TANPA NAMA"
-                            
-                            po_str = str(row.values[col_po]).strip() if col_po != -1 else "-"
-                            po_val = po_str if po_str.lower() not in ['nan', 'none', ''] else "-"
-                            
-                            tgl_val = "-"
-                            if col_tgl != -1:
-                                tgl_str = str(row.values[col_tgl]).strip()
-                                if tgl_str.lower() not in ['nan', 'none', '']:
-                                    if "00:00:00" in tgl_str: tgl_val = tgl_str.split(" ")[0]
-                                    else: tgl_val = tgl_str
-                            
-                            if tgl_val == "-":
-                                for v in val_list:
-                                    m = re.search(r'\d{1,2}-[a-zA-Z]{3}-?\d{0,4}|\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', v)
-                                    if m: tgl_val = m.group(0); break
-                                        
-                            extracted_rows.append({
-                                "UNIT KERJA": "PIHC", "NO PO": po_val, "TANGGAL": tgl_val, "VENDOR": vendor_val,
-                                "MATA UANG": "RP", "ITEM_KOTOR": item_name, "QTY": qty_val, "HARGA": prc_val
-                            })
-                        except Exception: pass
-                else: st.error("Gagal menemukan Header multi-baris. Pastikan ada 'Jenis Barang' dan 'Harga'.")
-
-            elif "ERP Pusat" in pilihan_format:
-                st.info("🤖 Mesin ERP Pusat sedang bekerja...")
-                curr_po, curr_tgl, curr_vendor, curr_money = "-", "-", "-", "RP"
-                for idx, row in df_input.iterrows():
-                    val_list = [str(c).strip() for c in row.values if str(c).strip() not in ['nan', 'None', '']]
-                    line = " | ".join(val_list).upper()
-                    
-                    if not val_list or any(x in line for x in ["SUBTOTAL", "GRAND TOTAL", "LAPORAN PO", "NO TRANS"]): continue
-
-                    if "INCLUDE" in line or "EXCLUDE" in line:
-                        curr_po = val_list[0]
-                        for c in val_list: 
-                            m = re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', c)
-                            if m: curr_tgl = m.group(0); break
-                        curr_vendor = "-"
-                        for c in val_list:
-                            if " - " in c: curr_vendor = c.split(" - ")[-1].strip(); break
-                        curr_money = "RP"
-                        for m in ["USD", "EUR", "CNY", "JPY"]:
-                            if m in line: curr_money = m; break
-                        continue
-                        
-                    if curr_po != "-":
-                        if len(val_list) >= 4:
                             nums = []
-                            for v in reversed(val_list):
+                            for v in val_list:
                                 n = parse_numeric(v)
-                                if n is not None: nums.insert(0, n)
+                                if n is not None: nums.append(n)
                             
                             if len(nums) >= 2:
                                 names = []
@@ -444,18 +370,134 @@ if menu == "Pembersihan PO":
                                     v_str = str(v).strip()
                                     if parse_numeric(v_str) is not None: continue
                                     if re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', v_str): continue
-                                    if re.match(r'^\d+\s+[A-Za-z]', v_str): continue 
                                     if v_str.upper() in ["RP", "USD", "EUR", "CNY", "IDR"]: continue
+                                    
+                                    v_clean = v_str.replace('\xa0', '').strip()
+                                    if len(v_clean) >= 8 and " " not in v_clean and re.search(r'\d', v_clean):
+                                        continue 
+
                                     names.append(v_str)
                                 
                                 item_name = max(names, key=len) if names else "Unknown"
+                                qty_val = nums[1] if len(nums) > 1 else nums[0]
+                                prc_val = nums[2] if len(nums) > 2 else 0.0
+                                
                                 extracted_rows.append({
-                                    "UNIT KERJA": "PUSAT", "NO PO": curr_po, "TANGGAL": curr_tgl, "VENDOR": curr_vendor,
-                                    "MATA UANG": curr_money, "ITEM_KOTOR": item_name, "QTY": nums[0], "HARGA": nums[-1]
+                                    "UNIT KERJA": detected_plant, "NO PO": curr_po, "TANGGAL": curr_tgl, "VENDOR": curr_vendor,
+                                    "MATA UANG": curr_money, "ITEM_KOTOR": item_name, "QTY": qty_val, "HARGA": prc_val
                                 })
 
+                # --- 3. LOGIKA NEW (PIHC & PGP BARU) ---
+                elif format_type == "NEW":
+                    col_nama = col_qty = col_harga = col_vendor = col_po = col_tgl = -1
+                    start_idx = 0
+                    
+                    for idx, row in df_input.head(30).iterrows():
+                        row_upper = [str(c).strip().upper().replace('\n', ' ') for c in row.values]
+                        
+                        for i, x in enumerate(row_upper):
+                            if 'JENIS BARANG' in x and col_nama == -1: 
+                                col_nama = i; start_idx = max(start_idx, idx)
+                            elif 'HARGA' in x and 'PER' not in x and 'UPDATE' not in x and col_harga == -1: 
+                                col_harga = i; start_idx = max(start_idx, idx)
+                            elif 'VENDOR' in x and 'PENUNJUKKAN' not in x and col_vendor == -1: 
+                                col_vendor = i; start_idx = max(start_idx, idx)
+                            elif ('QTY' in x) and col_qty == -1: 
+                                col_qty = i
+                            elif 'NO PO' in x and col_po == -1: 
+                                col_po = i
+                            elif ('PENYELESAIAN' in x or 'TGL EMAIL' in x) and col_tgl == -1: 
+                                col_tgl = i
+                                
+                    if col_nama != -1 and col_harga != -1:
+                        for idx, row in df_input.iloc[start_idx+1:].iterrows():
+                            val_list = [str(c).strip() for c in row.values if str(c).strip() not in ['nan', 'None', '']]
+                            if not val_list: continue
+                            
+                            line_text = " | ".join(val_list).upper()
+                            if any(x in line_text for x in ["SUBTOTAL", "TOTAL", "REKAP FORMULIR"]): continue
+                            
+                            try:
+                                item_name = str(row.values[col_nama]).strip()
+                                if item_name.lower() in ['', 'nan', 'none']: continue
+                                
+                                qty_val = parse_numeric(row.values[col_qty]) if col_qty != -1 else 1.0
+                                prc_val = parse_numeric(row.values[col_harga])
+                                
+                                if prc_val is None or prc_val == 0: continue 
+                                
+                                v_str = str(row.values[col_vendor]).strip() if col_vendor != -1 else "-"
+                                vendor_val = v_str if v_str.lower() not in ['nan', 'none', ''] else "CASH / TANPA NAMA"
+                                
+                                po_str = str(row.values[col_po]).strip() if col_po != -1 else "-"
+                                po_val = po_str if po_str.lower() not in ['nan', 'none', ''] else "-"
+                                
+                                tgl_val = "-"
+                                if col_tgl != -1:
+                                    tgl_str = str(row.values[col_tgl]).strip()
+                                    if tgl_str.lower() not in ['nan', 'none', '']:
+                                        if "00:00:00" in tgl_str: tgl_val = tgl_str.split(" ")[0]
+                                        else: tgl_val = tgl_str
+                                
+                                if tgl_val == "-":
+                                    for v in val_list:
+                                        m = re.search(r'\d{1,2}-[a-zA-Z]{3}-?\d{0,4}|\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', v)
+                                        if m: tgl_val = m.group(0); break
+                                            
+                                extracted_rows.append({
+                                    "UNIT KERJA": detected_plant, "NO PO": po_val, "TANGGAL": tgl_val, "VENDOR": vendor_val,
+                                    "MATA UANG": "RP", "ITEM_KOTOR": item_name, "QTY": qty_val, "HARGA": prc_val
+                                })
+                            except Exception: pass
+
+                # --- 4. LOGIKA ERP PUSAT ---
+                elif format_type == "PUSAT":
+                    curr_po, curr_tgl, curr_vendor, curr_money = "-", "-", "-", "RP"
+                    for idx, row in df_input.iterrows():
+                        val_list = [str(c).strip() for c in row.values if str(c).strip() not in ['nan', 'None', '']]
+                        line = " | ".join(val_list).upper()
+                        
+                        if not val_list or any(x in line for x in ["SUBTOTAL", "GRAND TOTAL", "LAPORAN PO", "NO TRANS"]): continue
+
+                        if "INCLUDE" in line or "EXCLUDE" in line:
+                            curr_po = val_list[0]
+                            for c in val_list: 
+                                m = re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', c)
+                                if m: curr_tgl = m.group(0); break
+                            curr_vendor = "-"
+                            for c in val_list:
+                                if " - " in c: curr_vendor = c.split(" - ")[-1].strip(); break
+                            curr_money = "RP"
+                            for m in ["USD", "EUR", "CNY", "JPY"]:
+                                if m in line: curr_money = m; break
+                            continue
+                            
+                        if curr_po != "-":
+                            if len(val_list) >= 4:
+                                nums = []
+                                for v in reversed(val_list):
+                                    n = parse_numeric(v)
+                                    if n is not None: nums.insert(0, n)
+                                
+                                if len(nums) >= 2:
+                                    names = []
+                                    for v in val_list:
+                                        v_str = str(v).strip()
+                                        if parse_numeric(v_str) is not None: continue
+                                        if re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', v_str): continue
+                                        if re.match(r'^\d+\s+[A-Za-z]', v_str): continue 
+                                        if v_str.upper() in ["RP", "USD", "EUR", "CNY", "IDR"]: continue
+                                        names.append(v_str)
+                                    
+                                    item_name = max(names, key=len) if names else "Unknown"
+                                    extracted_rows.append({
+                                        "UNIT KERJA": "PUSAT", "NO PO": curr_po, "TANGGAL": curr_tgl, "VENDOR": curr_vendor,
+                                        "MATA UANG": curr_money, "ITEM_KOTOR": item_name, "QTY": nums[0], "HARGA": nums[-1]
+                                    })
+
+            # --- AI MATCHING & DRAFT PREPARATION ---
             if extracted_rows:
-                st.success(f"✔️ Berhasil mengekstrak {len(extracted_rows)} baris data mentah yang valid.")
+                st.success(f"✔️ Berhasil mengekstrak {len(extracted_rows)} baris data mentah yang valid dari seluruh Sheet!")
                 final_draft = []
                 for r in extracted_rows:
                     match = process.extractOne(str(r['ITEM_KOTOR']).upper(), search_list, scorer=fuzz.token_set_ratio)
@@ -714,11 +756,9 @@ elif menu == "Dashboard Laporan":
             c_baku = next((c for c in df_d.columns if 'BAKU' in c), None)
             c_tgl = next((c for c in df_d.columns if 'TANGGAL' in c or 'TGL' in c or 'DATE' in c), None)
             
-            # --- PERBAIKAN V5.9: MENGGUNAKAN PARSE_HARGA AGAR ANTI-INFLASI 10X ---
             df_d['H_NUM'] = df_d[c_harga].apply(parse_harga)
             df_d['Q_NUM'] = pd.to_numeric(df_d['QTY'].astype(str).str.replace(r'[^0-9.]', '', regex=True), errors='coerce').fillna(0)
             df_d['TOTAL'] = df_d['H_NUM'] * df_d['Q_NUM']
-            # ---------------------------------------------------------------------
             
             df_d['DATE_CLEAN'] = pd.to_datetime(df_d[c_tgl], errors='coerce')
             df_d = df_d.dropna(subset=['DATE_CLEAN'])
@@ -1038,7 +1078,7 @@ elif menu == "Maintenance Data":
 st.markdown("---")
 st.markdown(
     "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v5.9 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
+    "ERP Purchasing System v6.1 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
     "</p>", 
     unsafe_allow_html=True
 )
