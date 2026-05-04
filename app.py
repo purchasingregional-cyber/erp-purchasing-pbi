@@ -1,6 +1,5 @@
 # ==============================================================================
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
-# Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
 # Versi: 7.2 (EXECUTIVE EDITION + Ultimate Sheet Memory & Smart FPB Date)
 # ==============================================================================
@@ -1144,7 +1143,7 @@ elif menu == "Maintenance Data":
 st.markdown("---")
 st.markdown(
     "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v7.2 | Proprietary of PT Panca Budi Idaman Tbk | Created with ❤️ for Raihan Subakti"
+    "ERP Purchasing System v7.2 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
     "</p>", 
     unsafe_allow_html=True
 )
