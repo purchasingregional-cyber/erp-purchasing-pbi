@@ -1,7 +1,7 @@
 # ==============================================================================
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 7.2 (EXECUTIVE EDITION + Ultimate Sheet Memory & Smart FPB Date)
+# Versi: 8.0 (EXECUTIVE EDITION + Ultimate E-Catalog & Image Base64 Studio)
 # ==============================================================================
 
 import streamlit as st
@@ -14,6 +14,8 @@ import re
 import urllib.parse
 import datetime
 import gspread
+import base64
+from PIL import Image
 from google.oauth2.service_account import Credentials
 from streamlit_option_menu import option_menu
 import plotly.express as px
@@ -120,9 +122,23 @@ def parse_numeric(value):
 def process_image_url(url):
     if not isinstance(url, str) or str(url).strip().lower() in ['nan', 'none', '']: return ""
     url_str = str(url).strip()
+    if url_str.startswith("data:image"): return url_str # Base64 handler
     match = re.search(r'/d/([a-zA-Z0-9_-]+)', url_str)
     if match: return f"https://drive.google.com/thumbnail?id={match.group(1)}&sz=w800"
     return url_str
+
+def image_to_base64(image_file):
+    try:
+        img = Image.open(image_file)
+        if img.mode != 'RGB': img = img.convert('RGB')
+        # Kompresi ketat agar muat di 50.000 limit karakter Google Sheets
+        img.thumbnail((250, 250)) 
+        buffered = io.BytesIO()
+        img.save(buffered, format="JPEG", quality=60)
+        img_str = base64.b64encode(buffered.getvalue()).decode()
+        return f"data:image/jpeg;base64,{img_str}"
+    except Exception as e:
+        return None
 
 def extract_code(text):
     try: return text.split('(')[1].split(')')[0].strip().zfill(3) 
@@ -232,7 +248,6 @@ if menu == "Pembersihan PO":
             dict_df = pd.read_excel(file_raw, sheet_name=None, header=None)
             extracted_rows = []
             
-            # --- TAMPILAN NOTIFIKASI ---
             if "Plant RA" in pilihan_format:
                 st.info("🤖 Mesin Smart-Detect RA sedang memindai format (Lama/Baru) pada seluruh sheet...")
             elif "Plant PGP" in pilihan_format:
@@ -248,7 +263,6 @@ if menu == "Pembersihan PO":
             elif "ERP Pusat" in pilihan_format:
                 st.info("🤖 Mesin ERP Pusat membaca seluruh sheet...")
 
-            # VARIABEL MEMORY ANTAR SHEET
             master_format_type = None
             master_cols_new = None
 
@@ -256,7 +270,6 @@ if menu == "Pembersihan PO":
                 format_type = ""
                 detected_plant = ""
 
-                # --- PENENTUAN FORMAT (CUKUP SEKALI DI SHEET AWAL) ---
                 if "ERP Pusat" in pilihan_format:
                     format_type = "PUSAT"; detected_plant = "PUSAT"
                 elif "PIHC" in pilihan_format:
@@ -276,15 +289,11 @@ if menu == "Pembersihan PO":
                             break
                     format_type = "NEW" if is_new else ("RA_OLD" if "Plant RA" in pilihan_format else "OLD")
 
-                # TIMPA DENGAN MEMORY JIKA INI ADALAH SHEET KE-2 DST
                 if master_format_type is None:
                     master_format_type = format_type
                 else:
                     format_type = master_format_type
 
-                # =======================================
-                # EKSEKUSI BERDASARKAN FORMAT
-                # =======================================
                 if format_type == "RA_OLD":
                     curr_po, curr_tgl, curr_vendor = "-", "-", "-"
                     col_nama, col_qty, col_harga = -1, -1, -1
@@ -397,7 +406,6 @@ if menu == "Pembersihan PO":
                         if m_g and ("TANGGAL" in text_g or "DATE" in text_g or "TGL" in text_g):
                             global_date = m_g.group(0); break
 
-                    # CEK KOLOM (JIKA TIDAK ADA DI MEMORY)
                     if master_cols_new is None:
                         for idx, row in df_input.head(30).iterrows():
                             for i, c in enumerate(row.values):
@@ -419,9 +427,8 @@ if menu == "Pembersihan PO":
                         if col_nama != -1 and col_harga != -1:
                             master_cols_new = (col_nama, col_qty, col_harga, col_vendor, col_po, col_tgl)
                     else:
-                        # GUNAKAN MEMORY DARI SHEET SEBELUMNYA
                         col_nama, col_qty, col_harga, col_vendor, col_po, col_tgl = master_cols_new
-                        start_idx = -1  # Ekstrak dari baris paling atas
+                        start_idx = -1
                                 
                     if col_nama != -1 and col_harga != -1:
                         for idx, row in df_input.iloc[start_idx+1:].iterrows():
@@ -438,7 +445,6 @@ if menu == "Pembersihan PO":
                                 qty_val = parse_numeric(row.values[col_qty]) if col_qty != -1 else 1.0
                                 if qty_val is None: qty_val = 1.0
                                 
-                                # ALLOW ZERO PRICE UNTUK BARANG YANG HARGANYA TEKS (TUNGGU BARANG/KOSONG)
                                 prc_val = parse_numeric(row.values[col_harga])
                                 if prc_val is None: prc_val = 0.0
                                 
@@ -448,7 +454,6 @@ if menu == "Pembersihan PO":
                                 po_str = str(row.values[col_po]).strip() if col_po != -1 else "-"
                                 po_val = po_str if po_str.lower() not in ['nan', 'none', ''] else "-"
 
-                                # Filter keras: Hanya lewati jika harga 0 DAN tidak ada nomor PO/FPB sama sekali
                                 if prc_val == 0 and po_val == "-": continue 
                                 
                                 tgl_val = "-"
@@ -466,8 +471,6 @@ if menu == "Pembersihan PO":
                                 if tgl_val == "-" and global_date != "-":
                                     tgl_val = global_date
                                     
-                                # FITUR SAKTI 7.2: SMART FPB DATE EXTRACTOR
-                                # Ambil bulan dan tahun dari kode FPB (Contoh: 2603/PIHS... -> Maret 2026)
                                 m_fpb = re.search(r'[A-Za-z]*(\d{2})(0[1-9]|1[0-2])[-/]', po_val)
                                 if m_fpb:
                                     year_fpb = "20" + m_fpb.group(1)
@@ -672,21 +675,58 @@ elif menu == "E-Catalog & Studio":
     t_cat, t_studio = st.tabs(["📖 Product Gallery", "🛠️ Asset Studio (Update Gambar)"])
     
     with t_cat:
-        col_s, col_f = st.columns([2, 1])
-        with col_s: search_cat = st.text_input("🔍 Cari Produk:")
+        # ---- E-CATALOG V8.0: FITUR DEWA ----
+        col_s, col_f, col_sort = st.columns([2, 1, 1])
+        with col_s: search_cat = st.text_input("🔍 Cari Produk:", placeholder="Ketik nama atau SKU...")
         with col_f:
-            list_kat = ["All Categories"] + sorted([k for k in df_master['KATEGORI'].unique() if str(k).strip() != "" and str(k).strip() != "nan"])
-            filter_cat = st.selectbox("📁 Kategori:", list_kat)
-        
+            list_kat = ["Semua Kategori"] + sorted([k for k in df_master['KATEGORI'].unique() if str(k).strip() != "" and str(k).strip() != "nan"])
+            filter_cat = st.selectbox("📁 Filter Kategori:", list_kat)
+        with col_sort:
+            sort_by = st.selectbox("⬇️ Urutkan Berdasarkan:", ["Terbaru", "Nama (A-Z)", "Nama (Z-A)", "Harga (Termurah)", "Harga (Termahal)"])
+
+        missing_only = st.checkbox("⚠️ Tampilkan HANYA barang tanpa gambar (Missing Assets)")
+
+        # Logika Filter
         df_show = df_master.drop_duplicates(subset=['NAMA BAKU'], keep='last').copy()
-        if filter_cat != "All Categories": df_show = df_show[df_show['KATEGORI'] == filter_cat]
+        
+        # Eksekusi Filter
+        if filter_cat != "Semua Kategori": df_show = df_show[df_show['KATEGORI'] == filter_cat]
         if search_cat: df_show = df_show[df_show['NAMA BAKU'].astype(str).str.contains(search_cat, case=False) | df_show['NOMOR SKU'].astype(str).str.contains(search_cat, case=False)]
+        if missing_only: df_show = df_show[df_show['LINK GAMBAR'].isna() | (df_show['LINK GAMBAR'] == '')]
+        
+        # Eksekusi Sort
+        if sort_by == "Nama (A-Z)": df_show = df_show.sort_values(by='NAMA BAKU', ascending=True)
+        elif sort_by == "Nama (Z-A)": df_show = df_show.sort_values(by='NAMA BAKU', ascending=False)
+        elif sort_by == "Harga (Termurah)": df_show = df_show.sort_values(by='HARGA', ascending=True)
+        elif sort_by == "Harga (Termahal)": df_show = df_show.sort_values(by='HARGA', ascending=False)
         
         st.markdown("---")
-        if df_show.empty: st.warning("Data tidak ditemukan.")
+        
+        if df_show.empty: 
+            st.warning("Data tidak ditemukan.")
         else:
+            # Generate Download HTML/PDF File
+            html_content = f"<h2>Katalog Produk PT Panca Budi ({filter_cat})</h2><table border='1' style='border-collapse: collapse; width: 100%;'><tr><th>SKU</th><th>NAMA BARANG</th><th>HARGA</th></tr>"
+            for _, r in df_show.iterrows():
+                html_content += f"<tr><td>{r.get('NOMOR SKU', '-')}</td><td>{r.get('NAMA BAKU', '-')}</td><td>{format_rupiah(r.get('HARGA', 0))}</td></tr>"
+            html_content += "</table><br><p>Dicetak dari Sistem ERP Purchasing</p>"
+            
+            st.download_button("🖨️ Download Katalog PDF (HTML Print)", data=html_content, file_name=f"Katalog_{datetime.date.today()}.html", mime="text/html")
+            st.write("")
+
+            # Logika Pagination
+            items_per_page = 20
+            total_pages = max(1, (len(df_show) - 1) // items_per_page + 1)
+            
+            col_page, col_info = st.columns([1, 4])
+            with col_page: page_number = st.number_input("Halaman", min_value=1, max_value=total_pages, value=1)
+            with col_info: st.write(f"Menampilkan halaman {page_number} dari {total_pages} (Total {len(df_show)} Produk)")
+            
+            start_idx = (page_number - 1) * items_per_page
+            df_page = df_show.iloc[start_idx : start_idx + items_per_page]
+
             cols = st.columns(4)
-            for idx, (_, row) in enumerate(df_show.head(40).iterrows()): 
+            for idx, (_, row) in enumerate(df_page.iterrows()): 
                 with cols[idx % 4]:
                     raw_link = str(row.get('LINK GAMBAR', '')).strip()
                     img_url = process_image_url(raw_link) 
@@ -707,73 +747,87 @@ elif menu == "E-Catalog & Studio":
                     st.markdown(card_html, unsafe_allow_html=True)
 
     with t_studio:
-        st.write("### 📸 Inject / Update Image Asset")
-        st.info("💡 **TIPS BARU:** Anda bisa mengisi gambar barang baru, ATAU **menimpa gambar barang yang sudah ada** jika salah. Cari gambar di Google, Klik Kanan -> **Copy Image Address** -> Paste di kotak bawah.")
+        st.write("### 📸 Asset Studio (Injeksi Gambar)")
+        st.info("💡 **TIPS TERBARU:** Bosku bisa *copy* gambar dari mana saja (Snipping tool/Web) lalu klik area kotak *Drag & Drop* di bawah dan tekan **Ctrl+V** untuk langsung *paste*!")
         
         if 'LINK GAMBAR' not in df_master.columns: df_master['LINK GAMBAR'] = ""
         
-        all_unique_items = df_master.drop_duplicates(subset=['NAMA BAKU'], keep='last')['NAMA BAKU'].tolist()
+        # --- STUDIO V8.0: FILTER KATEGORI SEBELUM CARI NAMA ---
+        studio_kat = st.selectbox("1. Filter Kategori Barang:", ["Semua Kategori"] + sorted([k for k in df_master['KATEGORI'].unique() if str(k).strip() != "" and str(k).strip() != "nan"]))
         
-        if not all_unique_items: st.success("Database Kosong.")
+        df_studio = df_master.drop_duplicates(subset=['NAMA BAKU'], keep='last')
+        if studio_kat != "Semua Kategori": df_studio = df_studio[df_studio['KATEGORI'] == studio_kat]
+        
+        all_unique_items = df_studio['NAMA BAKU'].tolist()
+        
+        if not all_unique_items: st.warning("Kategori ini Kosong.")
         else:
-            barang_pilih = st.selectbox("Ketik Nama Produk yang Mau Diubah/Ditambah Gambarnya:", all_unique_items)
+            barang_pilih = st.selectbox("2. Pilih Nama Produk yang Mau Diubah/Ditambah Gambarnya:", all_unique_items)
             
-            current_row = df_master[df_master['NAMA BAKU'] == barang_pilih].iloc[-1]
+            current_row = df_studio[df_studio['NAMA BAKU'] == barang_pilih].iloc[-1]
             current_link = str(current_row.get('LINK GAMBAR', '')).strip()
             
             if current_link and current_link.lower() not in ['nan', 'none', '']:
-                st.warning("⚠️ **Barang ini sudah memiliki gambar.** Jika Anda meng-upload link baru, gambar lama akan ditimpa (overwrite).")
+                st.warning("⚠️ **Barang ini sudah memiliki gambar.** Jika *upload* baru, gambar lama tertimpa.")
                 curr_preview = process_image_url(current_link)
-                if curr_preview:
-                    st.image(curr_preview, width=150, caption="Preview Gambar Saat Ini")
+                if curr_preview: st.image(curr_preview, width=150, caption="Gambar Saat Ini")
             else:
-                st.success("✅ Barang ini belum memiliki gambar. Silakan upload.")
+                st.success("✅ Barang ini belum memiliki gambar.")
 
             query_google = urllib.parse.quote(barang_pilih + " industri sparepart")
-            st.markdown(f"""
-            <a href="https://www.google.com/search?tbm=isch&q={query_google}" target="_blank">
-                <button style="background-color:#4285F4; color:white; border:none; padding:8px 16px; border-radius:8px; cursor:pointer; font-weight:bold; margin-bottom:15px; margin-top:10px;">
-                    🔍 Buka Google Images untuk "{barang_pilih}"
-                </button>
-            </a>
-            """, unsafe_allow_html=True)
+            st.markdown(f"<a href='https://www.google.com/search?tbm=isch&q={query_google}' target='_blank'><button style='background-color:#4285F4; color:white; border:none; padding:8px 16px; border-radius:8px; cursor:pointer; font-weight:bold; margin-bottom:15px; margin-top:5px;'>🔍 Cari '{barang_pilih}' di Google</button></a>", unsafe_allow_html=True)
 
-            link_input = st.text_input("Paste Link Gambar (G-Drive ATAU Link Internet Bebas) di sini:")
-            if link_input:
+            st.write("---")
+            st.write("**OPSI 1: Paste Link URL Gambar (Cara Lama)**")
+            link_input = st.text_input("Paste URL Link Gambar di sini:")
+            
+            st.write("**OPSI 2: Paste Gambar Fisik (Cara Cepat Ctrl+V)**")
+            file_upload = st.file_uploader("Klik kotak ini lalu tekan Ctrl+V (Atau Drag & Drop file gambar):", type=['png', 'jpg', 'jpeg', 'webp'])
+
+            img_to_save = None
+
+            if file_upload is not None:
+                b64_string = image_to_base64(file_upload)
+                if b64_string:
+                    st.image(file_upload, width=300, caption="Preview Upload (Siap Disimpan)")
+                    img_to_save = b64_string
+                else:
+                    st.error("Gagal membaca file gambar.")
+            
+            elif link_input:
                 if "shopee.co.id/" in link_input and "cf.shopee.co.id" not in link_input:
-                    st.error("⚠️ Oops! Ini link Halaman Produk Shopee. Silakan kembali ke Google Images, klik kanan tepat di fotonya, lalu pilih 'Copy Image Address' (Salin Alamat Gambar).")
+                    st.error("⚠️ Oops! Ini link Halaman Produk Shopee. Silakan 'Copy Image Address'.")
                 elif "tokopedia.com/" in link_input and "images.tokopedia.net" not in link_input:
-                    st.error("⚠️ Oops! Ini link Halaman Produk Tokopedia. Silakan kembali ke Google Images, klik kanan tepat di fotonya, lalu pilih 'Copy Image Address' (Salin Alamat Gambar).")
+                    st.error("⚠️ Oops! Ini link Halaman Produk Tokopedia. Silakan 'Copy Image Address'.")
                 else:
                     img_preview = process_image_url(link_input)
                     if img_preview:
-                        is_valid = True
                         try:
-                            st.image(img_preview, width=300, caption="Preview Gambar BARU")
+                            st.image(img_preview, width=300, caption="Preview Link (Siap Disimpan)")
+                            img_to_save = link_input
                         except Exception:
-                            st.warning("⚠️ Gambar gagal dimuat! Pastikan link yang dimasukkan berakhiran seperti .jpg / .png, atau link Google Drive yang valid.")
-                            is_valid = False
-                            
-                        if is_valid:
-                            if st.button("💾 Upload / Update Gambar", type="primary"):
-                                try:
-                                    with st.spinner("Menimpa gambar ke database..."):
-                                        client = get_gspread_client()
-                                        sheet_master = client.open_by_key(SHEET_ID).get_worksheet(0)
-                                        cell = sheet_master.find(barang_pilih, in_column=2)
-                                        if cell:
-                                            headers = sheet_master.row_values(1)
-                                            if 'LINK GAMBAR' in headers:
-                                                col_link_idx = headers.index('LINK GAMBAR') + 1
-                                                sheet_master.update_cell(cell.row, col_link_idx, link_input)
-                                                st.success("✅ Success! Gambar berhasil diperbarui.")
-                                                time.sleep(1)
-                                                st.cache_data.clear()
-                                                st.rerun()
-                                            else:
-                                                st.error("Kolom 'LINK GAMBAR' belum ada di baris pertama Sheet 1 Anda.")
-                                except Exception as e:
-                                    st.error(f"Error: {e}")
+                            st.warning("⚠️ Link tidak valid atau tidak bisa dibuka.")
+
+            if img_to_save:
+                if st.button("💾 Simpan Gambar ke Database", type="primary"):
+                    try:
+                        with st.spinner("Menembakkan gambar ke Master Data..."):
+                            client = get_gspread_client()
+                            sheet_master = client.open_by_key(SHEET_ID).get_worksheet(0)
+                            cell = sheet_master.find(barang_pilih, in_column=2)
+                            if cell:
+                                headers = sheet_master.row_values(1)
+                                if 'LINK GAMBAR' in headers:
+                                    col_link_idx = headers.index('LINK GAMBAR') + 1
+                                    sheet_master.update_cell(cell.row, col_link_idx, img_to_save)
+                                    st.success("✅ Success! Gambar berhasil diperbarui.")
+                                    time.sleep(1.5)
+                                    st.cache_data.clear()
+                                    st.rerun()
+                                else:
+                                    st.error("Kolom 'LINK GAMBAR' belum ada di baris pertama Master Anda.")
+                    except Exception as e:
+                        st.error(f"Error Database: {e}")
 
 # ==========================================
 # MENU 4: DATABASE VENDOR
@@ -1143,7 +1197,7 @@ elif menu == "Maintenance Data":
 st.markdown("---")
 st.markdown(
     "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v7.2 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
+    "ERP Purchasing System v8.0 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
     "</p>", 
     unsafe_allow_html=True
 )
