@@ -1,7 +1,7 @@
 # ==============================================================================
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 8.0 (EXECUTIVE EDITION + Ultimate E-Catalog & Image Base64 Studio)
+# Versi: 8.1 (EXECUTIVE EDITION + Seamless Ctrl+V Interface)
 # ==============================================================================
 
 import streamlit as st
@@ -122,7 +122,7 @@ def parse_numeric(value):
 def process_image_url(url):
     if not isinstance(url, str) or str(url).strip().lower() in ['nan', 'none', '']: return ""
     url_str = str(url).strip()
-    if url_str.startswith("data:image"): return url_str # Base64 handler
+    if url_str.startswith("data:image"): return url_str 
     match = re.search(r'/d/([a-zA-Z0-9_-]+)', url_str)
     if match: return f"https://drive.google.com/thumbnail?id={match.group(1)}&sz=w800"
     return url_str
@@ -131,7 +131,6 @@ def image_to_base64(image_file):
     try:
         img = Image.open(image_file)
         if img.mode != 'RGB': img = img.convert('RGB')
-        # Kompresi ketat agar muat di 50.000 limit karakter Google Sheets
         img.thumbnail((250, 250)) 
         buffered = io.BytesIO()
         img.save(buffered, format="JPEG", quality=60)
@@ -675,7 +674,6 @@ elif menu == "E-Catalog & Studio":
     t_cat, t_studio = st.tabs(["📖 Product Gallery", "🛠️ Asset Studio (Update Gambar)"])
     
     with t_cat:
-        # ---- E-CATALOG V8.0: FITUR DEWA ----
         col_s, col_f, col_sort = st.columns([2, 1, 1])
         with col_s: search_cat = st.text_input("🔍 Cari Produk:", placeholder="Ketik nama atau SKU...")
         with col_f:
@@ -686,15 +684,12 @@ elif menu == "E-Catalog & Studio":
 
         missing_only = st.checkbox("⚠️ Tampilkan HANYA barang tanpa gambar (Missing Assets)")
 
-        # Logika Filter
         df_show = df_master.drop_duplicates(subset=['NAMA BAKU'], keep='last').copy()
         
-        # Eksekusi Filter
         if filter_cat != "Semua Kategori": df_show = df_show[df_show['KATEGORI'] == filter_cat]
         if search_cat: df_show = df_show[df_show['NAMA BAKU'].astype(str).str.contains(search_cat, case=False) | df_show['NOMOR SKU'].astype(str).str.contains(search_cat, case=False)]
         if missing_only: df_show = df_show[df_show['LINK GAMBAR'].isna() | (df_show['LINK GAMBAR'] == '')]
         
-        # Eksekusi Sort
         if sort_by == "Nama (A-Z)": df_show = df_show.sort_values(by='NAMA BAKU', ascending=True)
         elif sort_by == "Nama (Z-A)": df_show = df_show.sort_values(by='NAMA BAKU', ascending=False)
         elif sort_by == "Harga (Termurah)": df_show = df_show.sort_values(by='HARGA', ascending=True)
@@ -705,7 +700,6 @@ elif menu == "E-Catalog & Studio":
         if df_show.empty: 
             st.warning("Data tidak ditemukan.")
         else:
-            # Generate Download HTML/PDF File
             html_content = f"<h2>Katalog Produk PT Panca Budi ({filter_cat})</h2><table border='1' style='border-collapse: collapse; width: 100%;'><tr><th>SKU</th><th>NAMA BARANG</th><th>HARGA</th></tr>"
             for _, r in df_show.iterrows():
                 html_content += f"<tr><td>{r.get('NOMOR SKU', '-')}</td><td>{r.get('NAMA BAKU', '-')}</td><td>{format_rupiah(r.get('HARGA', 0))}</td></tr>"
@@ -714,7 +708,6 @@ elif menu == "E-Catalog & Studio":
             st.download_button("🖨️ Download Katalog PDF (HTML Print)", data=html_content, file_name=f"Katalog_{datetime.date.today()}.html", mime="text/html")
             st.write("")
 
-            # Logika Pagination
             items_per_page = 20
             total_pages = max(1, (len(df_show) - 1) // items_per_page + 1)
             
@@ -748,11 +741,9 @@ elif menu == "E-Catalog & Studio":
 
     with t_studio:
         st.write("### 📸 Asset Studio (Injeksi Gambar)")
-        st.info("💡 **TIPS TERBARU:** Bosku bisa *copy* gambar dari mana saja (Snipping tool/Web) lalu klik area kotak *Drag & Drop* di bawah dan tekan **Ctrl+V** untuk langsung *paste*!")
         
         if 'LINK GAMBAR' not in df_master.columns: df_master['LINK GAMBAR'] = ""
         
-        # --- STUDIO V8.0: FILTER KATEGORI SEBELUM CARI NAMA ---
         studio_kat = st.selectbox("1. Filter Kategori Barang:", ["Semua Kategori"] + sorted([k for k in df_master['KATEGORI'].unique() if str(k).strip() != "" and str(k).strip() != "nan"]))
         
         df_studio = df_master.drop_duplicates(subset=['NAMA BAKU'], keep='last')
@@ -781,8 +772,17 @@ elif menu == "E-Catalog & Studio":
             st.write("**OPSI 1: Paste Link URL Gambar (Cara Lama)**")
             link_input = st.text_input("Paste URL Link Gambar di sini:")
             
-            st.write("**OPSI 2: Paste Gambar Fisik (Cara Cepat Ctrl+V)**")
-            file_upload = st.file_uploader("Klik kotak ini lalu tekan Ctrl+V (Atau Drag & Drop file gambar):", type=['png', 'jpg', 'jpeg', 'webp'])
+            st.write("**OPSI 2: Paste Gambar Fisik Langsung (Cara Cepat Ctrl+V)**")
+            
+            # --- MODIFIKASI V8.1: UI PASTE MAKSIMAL ---
+            st.markdown("""
+            <div style='background-color: #F0FDF4; border: 2px dashed #34D399; padding: 15px; border-radius: 10px; text-align: center; margin-bottom: 10px;'>
+                <h4 style='color: #065F46; margin-top: 0;'>👇 AREA PASTE (CTRL + V) 👇</h4>
+                <p style='color: #047857; font-size: 14px; margin-bottom: 0;'><b>JANGAN KLIK TOMBOL UPLOAD/BROWSE!</b><br>Cukup klik KIRI sekali di kotak putih/abu-abu bawah ini, lalu langsung tekan <b>Ctrl + V</b>.</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            file_upload = st.file_uploader("Area Paste", type=['png', 'jpg', 'jpeg', 'webp'], label_visibility="collapsed")
 
             img_to_save = None
 
@@ -1197,7 +1197,7 @@ elif menu == "Maintenance Data":
 st.markdown("---")
 st.markdown(
     "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v8.0 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
+    "ERP Purchasing System v8.1 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
     "</p>", 
     unsafe_allow_html=True
 )
