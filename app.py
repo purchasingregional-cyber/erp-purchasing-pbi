@@ -1,8 +1,7 @@
 # ==============================================================================
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
-# Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 9.2 (EXECUTIVE EDITION + 2-Doors Simple Security & Viewer Vendor Access)
+# Versi: 9.3 (EXECUTIVE EDITION + Luxury UI Login Experience)
 # ==============================================================================
 
 import streamlit as st
@@ -37,6 +36,7 @@ st.markdown("""
     
     .main { background-color: #F8FAFC; }
     
+    /* Widget Cards */
     .stMetric { 
         padding: 24px; 
         border-radius: 16px; 
@@ -50,40 +50,66 @@ st.markdown("""
         box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
     }
     
+    /* Tabs */
     .stTabs [data-baseweb="tab-list"] { gap: 24px; }
     .stTabs [data-baseweb="tab"] {
         height: 50px; white-space: pre-wrap; background-color: transparent;
         border-radius: 4px 4px 0px 0px; gap: 1px; padding-top: 10px; padding-bottom: 10px;
     }
     
-    .stButton>button { border-radius: 8px; font-weight: 600; letter-spacing: 0.5px; transition: all 0.3s; background-color: #059669; color: white; border: none; }
-    .stButton>button:hover { background-color: #047857; color: white; }
-    h1, h2, h3 { color: #0F172A; font-weight: 700; }
+    /* LUKSURIOS BUTTONS */
+    div[data-testid="stButton"] button {
+        border-radius: 12px !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.5px !important;
+        padding: 24px 0 !important;
+        transition: all 0.3s ease !important;
+    }
+    div[data-testid="stButton"] button[kind="primary"] {
+        background: linear-gradient(135deg, #064E3B 0%, #047857 100%) !important;
+        color: white !important;
+        border: none !important;
+        box-shadow: 0 4px 10px rgba(4, 120, 87, 0.2) !important;
+    }
+    div[data-testid="stButton"] button[kind="primary"]:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 10px 20px rgba(4, 120, 87, 0.3) !important;
+    }
+    div[data-testid="stButton"] button[kind="secondary"] {
+        background-color: #FFFFFF !important;
+        color: #334155 !important;
+        border: 2px solid #E2E8F0 !important;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.02) !important;
+    }
+    div[data-testid="stButton"] button[kind="secondary"]:hover {
+        background-color: #F8FAFC !important;
+        border-color: #CBD5E1 !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 10px 15px rgba(0,0,0,0.05) !important;
+    }
     
-    /* Box Login 2 Pintu */
-    .login-container {
-        max-width: 800px;
-        margin: auto;
-        margin-top: 8vh;
-        background: white;
-        border-radius: 20px;
-        box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-        padding: 40px;
-        border: 1px solid #E2E8F0;
+    /* LUXURY INPUT FIELD */
+    div[data-testid="stTextInput"] input {
+        border-radius: 12px !important;
+        border: 2px solid #E2E8F0 !important;
+        padding: 15px !important;
+        font-size: 16px !important;
+        text-align: center !important;
+        letter-spacing: 2px !important;
+        transition: all 0.3s ease !important;
+        background-color: #FFFFFF !important;
     }
-    .door-box {
-        padding: 30px;
-        border-radius: 16px;
-        background-color: #F8FAFC;
-        border: 2px dashed #CBD5E1;
-        text-align: center;
-        height: 100%;
-        transition: 0.3s;
+    div[data-testid="stTextInput"] input:focus {
+        border-color: #047857 !important;
+        box-shadow: 0 0 0 4px rgba(4, 120, 87, 0.15) !important;
     }
-    .door-box:hover {
-        border-color: #047857;
-        background-color: #F0FDF4;
+    div[data-testid="stForm"] {
+        border: none !important;
+        background: transparent !important;
+        padding: 0 !important;
     }
+    
+    h1, h2, h3 { color: #0F172A; font-weight: 700; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -110,24 +136,31 @@ def load_data(gid):
     return pd.read_csv(url)
 
 # ==========================================
-# 3. SISTEM KEAMANAN (2 PINTU LOGIN)
+# 3. SISTEM KEAMANAN LUXURY (2 PINTU LOGIN)
 # ==========================================
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
 
 if not st.session_state['logged_in']:
-    st.markdown("<div class='login-container'>", unsafe_allow_html=True)
-    st.markdown("<h1 style='text-align: center; color: #047857; font-weight: 800; font-size: 38px; margin-bottom: 0px;'>PANCA BUDI</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #64748B; font-weight: 700; letter-spacing: 2px; font-size: 13px; margin-bottom: 40px;'>ENTERPRISE PROCUREMENT SYSTEM</p>", unsafe_allow_html=True)
+    st.markdown("""
+        <div style="text-align: center; margin-top: 8vh; margin-bottom: 8vh;">
+            <div style="display: inline-block; background: #ECFDF5; color: #047857; padding: 6px 16px; border-radius: 20px; font-size: 11px; font-weight: 800; letter-spacing: 1.5px; margin-bottom: 20px;">SECURE LOGIN PORTAL</div>
+            <h1 style="color: #064E3B; font-weight: 800; font-size: 52px; letter-spacing: -1.5px; margin: 0;">PANCA BUDI</h1>
+            <p style="color: #64748B; font-weight: 700; letter-spacing: 4px; font-size: 13px; text-transform: uppercase; margin-top: 5px;">Enterprise Procurement System</p>
+        </div>
+    """, unsafe_allow_html=True)
     
-    col_tamu, col_admin = st.columns(2)
+    col_space1, col_tamu, col_gap, col_admin, col_space2 = st.columns([1, 4, 1, 4, 1])
     
     # --- PINTU 1: TAMU / VIEWER ---
     with col_tamu:
         st.markdown("""
-            <div class='door-box'>
-                <h2 style='color:#475569; margin-top:0;'>👁️ Pintu Tamu</h2>
-                <p style='color:#64748B; font-size:14px; margin-bottom:25px;'>Akses cepat untuk melihat E-Catalog, Database Vendor, dan mencari spesifikasi barang.</p>
+            <div style="text-align: center; padding: 20px 10px;">
+                <div style="font-size: 55px; margin-bottom: 15px;">🏢</div>
+                <h3 style="color: #0F172A; font-weight: 800; font-size: 24px; margin-bottom: 10px;">Guest Access</h3>
+                <p style="color: #64748B; font-size: 14px; line-height: 1.6; margin-bottom: 30px;">
+                    Jelajahi E-Catalog, spesifikasi SKU, dan direktori Vendor tanpa perlu otorisasi.
+                </p>
             </div>
         """, unsafe_allow_html=True)
         if st.button("Masuk Sebagai Tamu", use_container_width=True, type="secondary"):
@@ -139,27 +172,28 @@ if not st.session_state['logged_in']:
     # --- PINTU 2: ADMIN PURCHASING ---
     with col_admin:
         st.markdown("""
-            <div class='door-box'>
-                <h2 style='color:#047857; margin-top:0;'>👑 Pintu Admin</h2>
-                <p style='color:#64748B; font-size:14px; margin-bottom:15px;'>Akses penuh operasional data. Masukkan kata sandi rahasia di bawah.</p>
+            <div style="text-align: center; padding: 20px 10px;">
+                <div style="font-size: 55px; margin-bottom: 15px;">🛡️</div>
+                <h3 style="color: #064E3B; font-weight: 800; font-size: 24px; margin-bottom: 10px;">Admin Portal</h3>
+                <p style="color: #64748B; font-size: 14px; line-height: 1.6; margin-bottom: 20px;">
+                    Akses penuh ke modul pembersihan data, laporan, dan master maintenance.
+                </p>
             </div>
         """, unsafe_allow_html=True)
         with st.form("form_admin"):
-            input_pass = st.text_input("🔑 Kata Sandi Admin:", type="password", placeholder="Ketik kata sandi...")
-            btn_login = st.form_submit_button("Masuk Sebagai Admin", use_container_width=True, type="primary")
+            input_pass = st.text_input("Kode Akses", type="password", placeholder="••••••••", label_visibility="collapsed")
+            st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+            btn_login = st.form_submit_button("Otorisasi Akses", use_container_width=True, type="primary")
             
             if btn_login:
                 if input_pass == PASSWORD_ADMIN:
                     st.session_state['logged_in'] = True
                     st.session_state['role'] = "ADMIN"
                     st.session_state['nama'] = "Admin Purchasing"
-                    st.success("Sandi benar! Mengalihkan...")
-                    time.sleep(1)
                     st.rerun()
                 else:
-                    st.error("❌ Kata Sandi Salah!")
+                    st.error("❌ Akses Ditolak: Kode Sandi Tidak Valid")
                     
-    st.markdown("</div>", unsafe_allow_html=True)
     st.stop() # Menghentikan script agar menu utama tidak terbuka
 
 # ==========================================
@@ -1298,7 +1332,7 @@ elif menu == "Maintenance Data":
 st.markdown("---")
 st.markdown(
     "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v9.2 | Proprietary of PT Panca Budi Idaman Tbk | Created with ❤️ for Raihan Subakti"
+    "ERP Purchasing System v9.3 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
     "</p>", 
     unsafe_allow_html=True
 )
