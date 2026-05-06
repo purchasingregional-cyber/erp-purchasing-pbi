@@ -2,7 +2,7 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 9.6 (EXECUTIVE EDITION + Stealth UI & No Streamlit Watermark)
+# Versi: 9.7 (EXECUTIVE EDITION + Compact Luxury Login UI)
 # ==============================================================================
 
 import streamlit as st
@@ -64,23 +64,23 @@ st.markdown("""
         border-radius: 4px 4px 0px 0px; gap: 1px; padding-top: 10px; padding-bottom: 10px;
     }
     
-    /* LUKSURIOS BUTTONS */
+    /* COMPACT LUXURY BUTTONS (UKURAN DIPERBAIKI) */
     div[data-testid="stButton"] button {
-        border-radius: 12px !important;
+        border-radius: 10px !important;
         font-weight: 700 !important;
         letter-spacing: 0.5px !important;
-        padding: 24px 0 !important;
+        padding: 12px 0 !important; /* LEBIH RAMPING */
         transition: all 0.3s ease !important;
     }
     div[data-testid="stButton"] button[kind="primary"] {
         background: linear-gradient(135deg, #064E3B 0%, #047857 100%) !important;
         color: white !important;
         border: none !important;
-        box-shadow: 0 4px 10px rgba(4, 120, 87, 0.2) !important;
+        box-shadow: 0 4px 6px rgba(4, 120, 87, 0.2) !important;
     }
     div[data-testid="stButton"] button[kind="primary"]:hover {
         transform: translateY(-2px) !important;
-        box-shadow: 0 10px 20px rgba(4, 120, 87, 0.3) !important;
+        box-shadow: 0 8px 15px rgba(4, 120, 87, 0.3) !important;
     }
     div[data-testid="stButton"] button[kind="secondary"] {
         background-color: #FFFFFF !important;
@@ -92,15 +92,15 @@ st.markdown("""
         background-color: #F8FAFC !important;
         border-color: #CBD5E1 !important;
         transform: translateY(-2px) !important;
-        box-shadow: 0 10px 15px rgba(0,0,0,0.05) !important;
+        box-shadow: 0 8px 15px rgba(0,0,0,0.05) !important;
     }
     
-    /* LUXURY INPUT FIELD */
+    /* COMPACT LUXURY INPUT FIELD */
     div[data-testid="stTextInput"] input {
-        border-radius: 12px !important;
+        border-radius: 10px !important;
         border: 2px solid #E2E8F0 !important;
-        padding: 15px !important;
-        font-size: 16px !important;
+        padding: 12px !important; /* LEBIH RAMPING */
+        font-size: 14px !important;
         text-align: center !important;
         letter-spacing: 2px !important;
         transition: all 0.3s ease !important;
@@ -149,24 +149,26 @@ if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
 
 if not st.session_state['logged_in']:
+    # JUDUL LEBIH COMPACT
     st.markdown("""
-        <div style="text-align: center; margin-top: 8vh; margin-bottom: 8vh;">
-            <div style="display: inline-block; background: #ECFDF5; color: #047857; padding: 6px 16px; border-radius: 20px; font-size: 11px; font-weight: 800; letter-spacing: 1.5px; margin-bottom: 20px;">SECURE LOGIN PORTAL</div>
-            <h1 style="color: #064E3B; font-weight: 800; font-size: 52px; letter-spacing: -1.5px; margin: 0;">PANCA BUDI</h1>
-            <p style="color: #64748B; font-weight: 700; letter-spacing: 4px; font-size: 13px; text-transform: uppercase; margin-top: 5px;">Enterprise Procurement System</p>
+        <div style="text-align: center; margin-top: 5vh; margin-bottom: 4vh;">
+            <div style="display: inline-block; background: #ECFDF5; color: #047857; padding: 4px 12px; border-radius: 20px; font-size: 10px; font-weight: 800; letter-spacing: 1.5px; margin-bottom: 12px;">SECURE LOGIN PORTAL</div>
+            <h1 style="color: #064E3B; font-weight: 800; font-size: 36px; letter-spacing: -1px; margin: 0;">PANCA BUDI</h1>
+            <p style="color: #64748B; font-weight: 700; letter-spacing: 3px; font-size: 11px; text-transform: uppercase; margin-top: 5px;">Enterprise Procurement System</p>
         </div>
     """, unsafe_allow_html=True)
     
-    col_space1, col_tamu, col_gap, col_admin, col_space2 = st.columns([1, 4, 1, 4, 1])
+    # KOLOM DIDORONG KE TENGAH AGAR TIDAK LEBAR
+    col_space1, col_tamu, col_gap, col_admin, col_space2 = st.columns([1.5, 2.5, 0.3, 2.5, 1.5])
     
     # --- PINTU 1: TAMU / VIEWER ---
     with col_tamu:
         st.markdown("""
-            <div style="text-align: center; padding: 20px 10px;">
-                <div style="font-size: 55px; margin-bottom: 15px;">🏢</div>
-                <h3 style="color: #0F172A; font-weight: 800; font-size: 24px; margin-bottom: 10px;">Guest Access</h3>
-                <p style="color: #64748B; font-size: 14px; line-height: 1.6; margin-bottom: 30px;">
-                    Jelajahi E-Catalog, spesifikasi SKU, dan direktori Vendor tanpa perlu otorisasi.
+            <div style="text-align: center; padding: 20px 15px 15px 15px; background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.02); height: 100%; margin-bottom: 15px;">
+                <div style="font-size: 40px; margin-bottom: 10px;">🏢</div>
+                <h3 style="color: #0F172A; font-weight: 800; font-size: 18px; margin-bottom: 8px;">Guest Access</h3>
+                <p style="color: #64748B; font-size: 12px; line-height: 1.4; margin-bottom: 5px; padding: 0 10px;">
+                    Jelajahi E-Catalog, spesifikasi SKU, dan direktori Vendor tanpa otorisasi.
                 </p>
             </div>
         """, unsafe_allow_html=True)
@@ -179,17 +181,16 @@ if not st.session_state['logged_in']:
     # --- PINTU 2: ADMIN PURCHASING ---
     with col_admin:
         st.markdown("""
-            <div style="text-align: center; padding: 20px 10px;">
-                <div style="font-size: 55px; margin-bottom: 15px;">🛡️</div>
-                <h3 style="color: #064E3B; font-weight: 800; font-size: 24px; margin-bottom: 10px;">Admin Portal</h3>
-                <p style="color: #64748B; font-size: 14px; line-height: 1.6; margin-bottom: 20px;">
+            <div style="text-align: center; padding: 20px 15px 15px 15px; background-color: #F0FDF4; border: 1px solid #A7F3D0; border-radius: 16px; box-shadow: 0 4px 6px rgba(4,120,87,0.05); height: 100%; margin-bottom: 15px;">
+                <div style="font-size: 40px; margin-bottom: 10px;">🛡️</div>
+                <h3 style="color: #064E3B; font-weight: 800; font-size: 18px; margin-bottom: 8px;">Admin Portal</h3>
+                <p style="color: #047857; font-size: 12px; line-height: 1.4; margin-bottom: 5px; padding: 0 10px;">
                     Akses penuh ke modul pembersihan data, laporan, dan master maintenance.
                 </p>
             </div>
         """, unsafe_allow_html=True)
         with st.form("form_admin"):
             input_pass = st.text_input("Kode Akses", type="password", placeholder="••••••••", label_visibility="collapsed")
-            st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
             btn_login = st.form_submit_button("Otorisasi Akses", use_container_width=True, type="primary")
             
             if btn_login:
@@ -1363,7 +1364,7 @@ elif menu == "Maintenance Data":
 st.markdown("---")
 st.markdown(
     "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v9.6 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
+    "ERP Purchasing System v9.7 | Proprietary of PT Panca Budi Idaman Tbk | Created with  for Raihan Subakti"
     "</p>", 
     unsafe_allow_html=True
 )
