@@ -2,7 +2,7 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 9.5 (EXECUTIVE EDITION + Batch Update Anti-Limit API)
+# Versi: 9.6 (EXECUTIVE EDITION + Stealth UI & No Streamlit Watermark)
 # ==============================================================================
 
 import streamlit as st
@@ -36,6 +36,12 @@ st.markdown("""
     }
     
     .main { background-color: #F8FAFC; }
+    
+    /* --- FITUR STEALTH: MENGHILANGKAN MENU BAWAAN STREAMLIT --- */
+    [data-testid="stHeader"] { visibility: hidden !important; height: 0px !important; }
+    footer { visibility: hidden !important; }
+    .stDeployButton { display: none !important; }
+    #MainMenu { visibility: hidden !important; }
     
     /* Widget Cards */
     .stMetric { 
@@ -284,7 +290,6 @@ def create_metric_card(icon_class, title, value):
     </div>
     """
 
-# FITUR ANTI-LIMIT API GOOGLE: Konversi nomor kolom jadi huruf (Misal: 1 -> A, 2 -> B)
 def col_num_to_letter(n):
     string = ""
     while n > 0:
@@ -951,7 +956,6 @@ elif menu == "E-Catalog & Studio":
                             except Exception:
                                 st.warning("⚠️ Link tidak valid atau tidak bisa dibuka.")
 
-                # --- FITUR ANTI-LIMIT API BATCH UPDATE (V9.5) ---
                 if img_to_save:
                     if st.button("💾 Simpan Gambar ke Database", type="primary"):
                         try:
@@ -959,22 +963,18 @@ elif menu == "E-Catalog & Studio":
                                 client = get_gspread_client()
                                 sheet_master = client.open_by_key(SHEET_ID).get_worksheet(0)
                                 
-                                # Ambil semua data sekaligus biar gak buang-buang kuota API
                                 all_data = sheet_master.get_all_values()
                                 headers_upper = [str(h).strip().upper() for h in all_data[0]]
                                 
                                 if 'LINK GAMBAR' in headers_upper:
-                                    col_link_idx = headers_upper.index('LINK GAMBAR') + 1 # Gspread column 1-based
+                                    col_link_idx = headers_upper.index('LINK GAMBAR') + 1 
                                     col_letter = col_num_to_letter(col_link_idx)
                                     
-                                    # Cari index baris dari df_master (0-based)
                                     matching_indices = df_master[df_master['NAMA BAKU'].astype(str).str.strip().str.upper() == barang_pilih.strip().upper()].index
                                     
-                                    # Convert ke row Google Sheet (Header = 1, Data mulai = 2)
                                     matching_rows = [idx + 2 for idx in matching_indices]
                                     
                                     if matching_rows:
-                                        # BUNGKUS SEMUA UPDATE JADI 1 PAKET BATCH
                                         batch_data = []
                                         for r_idx in matching_rows:
                                             batch_data.append({
@@ -982,7 +982,6 @@ elif menu == "E-Catalog & Studio":
                                                 'values': [[img_to_save]]
                                             })
                                             
-                                        # Tembak ke Google dalam 1x API Call ajaib
                                         sheet_master.batch_update(batch_data)
                                             
                                         st.success(f"✅ Success! Gambar berhasil ditanam di {len(matching_rows)} histori transaksi.")
@@ -1364,7 +1363,7 @@ elif menu == "Maintenance Data":
 st.markdown("---")
 st.markdown(
     "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v9.5 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
+    "ERP Purchasing System v9.6 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
     "</p>", 
     unsafe_allow_html=True
 )
