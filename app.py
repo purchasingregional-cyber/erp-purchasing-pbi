@@ -1,7 +1,8 @@
 # ==============================================================================
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
+# Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 8.1 (EXECUTIVE EDITION + Seamless Ctrl+V Interface)
+# Versi: 9.2 (EXECUTIVE EDITION + 2-Doors Simple Security & Viewer Vendor Access)
 # ==============================================================================
 
 import streamlit as st
@@ -58,6 +59,31 @@ st.markdown("""
     .stButton>button { border-radius: 8px; font-weight: 600; letter-spacing: 0.5px; transition: all 0.3s; background-color: #059669; color: white; border: none; }
     .stButton>button:hover { background-color: #047857; color: white; }
     h1, h2, h3 { color: #0F172A; font-weight: 700; }
+    
+    /* Box Login 2 Pintu */
+    .login-container {
+        max-width: 800px;
+        margin: auto;
+        margin-top: 8vh;
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+        padding: 40px;
+        border: 1px solid #E2E8F0;
+    }
+    .door-box {
+        padding: 30px;
+        border-radius: 16px;
+        background-color: #F8FAFC;
+        border: 2px dashed #CBD5E1;
+        text-align: center;
+        height: 100%;
+        transition: 0.3s;
+    }
+    .door-box:hover {
+        border-color: #047857;
+        background-color: #F0FDF4;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -69,28 +95,82 @@ GID_MASTER = "0"
 GID_VENDOR = "168217676"  
 GID_DASHBOARD = "1722600044" 
 
+# PASSWORD ADMIN SANGAT RAHASIA (BISA BOSKU GANTI DI SINI)
+PASSWORD_ADMIN = "12345"
+
 def get_gspread_client():
     key_dict = json.loads(st.secrets["google_json"])
     scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
     creds = Credentials.from_service_account_info(key_dict, scopes=scopes)
     return gspread.authorize(creds)
 
-@st.cache_data(ttl=300) 
+@st.cache_data(ttl=120) 
 def load_data(gid):
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={gid}"
     return pd.read_csv(url)
 
 # ==========================================
-# 3. HELPER FUNCTIONS
+# 3. SISTEM KEAMANAN (2 PINTU LOGIN)
+# ==========================================
+if 'logged_in' not in st.session_state:
+    st.session_state['logged_in'] = False
+
+if not st.session_state['logged_in']:
+    st.markdown("<div class='login-container'>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; color: #047857; font-weight: 800; font-size: 38px; margin-bottom: 0px;'>PANCA BUDI</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #64748B; font-weight: 700; letter-spacing: 2px; font-size: 13px; margin-bottom: 40px;'>ENTERPRISE PROCUREMENT SYSTEM</p>", unsafe_allow_html=True)
+    
+    col_tamu, col_admin = st.columns(2)
+    
+    # --- PINTU 1: TAMU / VIEWER ---
+    with col_tamu:
+        st.markdown("""
+            <div class='door-box'>
+                <h2 style='color:#475569; margin-top:0;'>👁️ Pintu Tamu</h2>
+                <p style='color:#64748B; font-size:14px; margin-bottom:25px;'>Akses cepat untuk melihat E-Catalog, Database Vendor, dan mencari spesifikasi barang.</p>
+            </div>
+        """, unsafe_allow_html=True)
+        if st.button("Masuk Sebagai Tamu", use_container_width=True, type="secondary"):
+            st.session_state['logged_in'] = True
+            st.session_state['role'] = "VIEWER"
+            st.session_state['nama'] = "Tamu Pabrik"
+            st.rerun()
+
+    # --- PINTU 2: ADMIN PURCHASING ---
+    with col_admin:
+        st.markdown("""
+            <div class='door-box'>
+                <h2 style='color:#047857; margin-top:0;'>👑 Pintu Admin</h2>
+                <p style='color:#64748B; font-size:14px; margin-bottom:15px;'>Akses penuh operasional data. Masukkan kata sandi rahasia di bawah.</p>
+            </div>
+        """, unsafe_allow_html=True)
+        with st.form("form_admin"):
+            input_pass = st.text_input("🔑 Kata Sandi Admin:", type="password", placeholder="Ketik kata sandi...")
+            btn_login = st.form_submit_button("Masuk Sebagai Admin", use_container_width=True, type="primary")
+            
+            if btn_login:
+                if input_pass == PASSWORD_ADMIN:
+                    st.session_state['logged_in'] = True
+                    st.session_state['role'] = "ADMIN"
+                    st.session_state['nama'] = "Admin Purchasing"
+                    st.success("Sandi benar! Mengalihkan...")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error("❌ Kata Sandi Salah!")
+                    
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.stop() # Menghentikan script agar menu utama tidak terbuka
+
+# ==========================================
+# 4. HELPER FUNCTIONS
 # ==========================================
 def format_rupiah(angka):
     try:
         val = str(angka).strip()
         if val.upper() in ['NAN', 'NONE', '']: return "Rp 0"
-        
         if val.endswith('.0'): val = val[:-2]
         if val.endswith(',00'): val = val[:-3]
-        
         num_str = re.sub(r'[^0-9]', '', val)
         if num_str: return f"Rp {int(num_str):,}".replace(',', '.')
         return val
@@ -149,7 +229,6 @@ def generate_new_sku(prefix_val, kat_full, det_full, current_df):
         c_kat = extract_code(str(kat_full))
         c_det = extract_code(str(det_full))
         pattern = f"{prefix}-{c_kat}-{c_det}-"
-        
         df_match = current_df[current_df['NOMOR SKU'].astype(str).str.contains(pattern, na=False)]
         if not df_match.empty:
             last_nums = []
@@ -171,7 +250,7 @@ def create_metric_card(icon_class, title, value):
     """
 
 # ==========================================
-# 4. LOAD & PERSIAPAN MASTER DATA
+# 5. LOAD & PERSIAPAN MASTER DATA
 # ==========================================
 try:
     df_master = load_data(GID_MASTER)
@@ -192,25 +271,45 @@ except Exception as e:
     st.error(f"⚠️ Gagal Load Master Data: {e}"); st.stop()
 
 # ==========================================
-# 5. SIDEBAR NAVIGATION
+# 6. SIDEBAR NAVIGATION (DYNAMIC RBAC)
 # ==========================================
 with st.sidebar:
     st.markdown("""
-        <div style='text-align: center; padding: 10px 0 20px 0; border-bottom: 1px solid #E2E8F0; margin-bottom: 20px;'>
+        <div style='text-align: center; padding: 10px 0 10px 0; border-bottom: 1px solid #E2E8F0; margin-bottom: 15px;'>
             <h1 style='color: #047857; font-weight: 800; margin: 0; font-size: 32px; letter-spacing: -1px;'>PANCA BUDI</h1>
             <p style='color: #64748B; font-size: 11px; font-weight: 700; letter-spacing: 2px; margin: 0;'>HOLDING PURCHASING</p>
         </div>
         """, unsafe_allow_html=True)
     
-    if st.button("🔄 Sync Database", use_container_width=True):
-        st.cache_data.clear(); st.rerun()
-        
-    st.write("") 
+    st.markdown(f"""
+        <div style='background-color:#F1F5F9; padding:10px; border-radius:8px; margin-bottom:15px; text-align:center;'>
+            <p style='margin:0; font-size:12px; color:#64748B;'>Login sebagai:</p>
+            <p style='margin:0; font-weight:800; color:#0F172A; font-size:14px;'>👤 {st.session_state['nama']}</p>
+            <span style='background-color:{"#047857" if st.session_state['role'] == "ADMIN" else "#64748B"}; color:white; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:bold;'>{st.session_state['role']}</span>
+        </div>
+    """, unsafe_allow_html=True)
+
+    if st.button("🚪 Logout / Keluar", use_container_width=True):
+        st.session_state['logged_in'] = False
+        st.session_state.clear()
+        st.rerun()
+
+    st.write("---")
+    
+    # --- LOGIKA RBAC 2 PINTU ---
+    user_role = st.session_state.get('role', 'VIEWER')
+    
+    if user_role == "ADMIN":
+        menu_options = ["Pembersihan PO", "Pencarian Barang", "E-Catalog & Studio", "Database Vendor", "Dashboard Laporan", "Maintenance Data"]
+        menu_icons = ["magic", "search", "images", "shop", "bar-chart-line", "tools"]
+    else: # PINTU TAMU (VIEWER) - DITAMBAHKAN DATABASE VENDOR
+        menu_options = ["Pencarian Barang", "E-Catalog & Studio", "Database Vendor"]
+        menu_icons = ["search", "images", "shop"]
     
     menu = option_menu(
         menu_title="", 
-        options=["Pembersihan PO", "Pencarian Barang", "E-Catalog & Studio", "Database Vendor", "Dashboard Laporan", "Maintenance Data"],
-        icons=["magic", "search", "images", "shop", "bar-chart-line", "tools"], 
+        options=menu_options,
+        icons=menu_icons, 
         default_index=0, 
         styles={
             "container": {"padding": "0!important", "background-color": "transparent"},
@@ -740,94 +839,96 @@ elif menu == "E-Catalog & Studio":
                     st.markdown(card_html, unsafe_allow_html=True)
 
     with t_studio:
-        st.write("### 📸 Asset Studio (Injeksi Gambar)")
-        
-        if 'LINK GAMBAR' not in df_master.columns: df_master['LINK GAMBAR'] = ""
-        
-        studio_kat = st.selectbox("1. Filter Kategori Barang:", ["Semua Kategori"] + sorted([k for k in df_master['KATEGORI'].unique() if str(k).strip() != "" and str(k).strip() != "nan"]))
-        
-        df_studio = df_master.drop_duplicates(subset=['NAMA BAKU'], keep='last')
-        if studio_kat != "Semua Kategori": df_studio = df_studio[df_studio['KATEGORI'] == studio_kat]
-        
-        all_unique_items = df_studio['NAMA BAKU'].tolist()
-        
-        if not all_unique_items: st.warning("Kategori ini Kosong.")
+        if st.session_state.get('role') != "ADMIN":
+            st.error("⛔ Akses Ditolak! Hanya jabatan ADMIN yang dapat menyuntikkan atau merubah Asset Gambar.")
         else:
-            barang_pilih = st.selectbox("2. Pilih Nama Produk yang Mau Diubah/Ditambah Gambarnya:", all_unique_items)
+            st.write("### 📸 Asset Studio (Injeksi Gambar)")
             
-            current_row = df_studio[df_studio['NAMA BAKU'] == barang_pilih].iloc[-1]
-            current_link = str(current_row.get('LINK GAMBAR', '')).strip()
+            if 'LINK GAMBAR' not in df_master.columns: df_master['LINK GAMBAR'] = ""
             
-            if current_link and current_link.lower() not in ['nan', 'none', '']:
-                st.warning("⚠️ **Barang ini sudah memiliki gambar.** Jika *upload* baru, gambar lama tertimpa.")
-                curr_preview = process_image_url(current_link)
-                if curr_preview: st.image(curr_preview, width=150, caption="Gambar Saat Ini")
+            studio_kat = st.selectbox("1. Filter Kategori Barang:", ["Semua Kategori"] + sorted([k for k in df_master['KATEGORI'].unique() if str(k).strip() != "" and str(k).strip() != "nan"]))
+            
+            df_studio = df_master.drop_duplicates(subset=['NAMA BAKU'], keep='last')
+            if studio_kat != "Semua Kategori": df_studio = df_studio[df_studio['KATEGORI'] == studio_kat]
+            
+            all_unique_items = df_studio['NAMA BAKU'].tolist()
+            
+            if not all_unique_items: st.warning("Kategori ini Kosong.")
             else:
-                st.success("✅ Barang ini belum memiliki gambar.")
-
-            query_google = urllib.parse.quote(barang_pilih + " industri sparepart")
-            st.markdown(f"<a href='https://www.google.com/search?tbm=isch&q={query_google}' target='_blank'><button style='background-color:#4285F4; color:white; border:none; padding:8px 16px; border-radius:8px; cursor:pointer; font-weight:bold; margin-bottom:15px; margin-top:5px;'>🔍 Cari '{barang_pilih}' di Google</button></a>", unsafe_allow_html=True)
-
-            st.write("---")
-            st.write("**OPSI 1: Paste Link URL Gambar (Cara Lama)**")
-            link_input = st.text_input("Paste URL Link Gambar di sini:")
-            
-            st.write("**OPSI 2: Paste Gambar Fisik Langsung (Cara Cepat Ctrl+V)**")
-            
-            # --- MODIFIKASI V8.1: UI PASTE MAKSIMAL ---
-            st.markdown("""
-            <div style='background-color: #F0FDF4; border: 2px dashed #34D399; padding: 15px; border-radius: 10px; text-align: center; margin-bottom: 10px;'>
-                <h4 style='color: #065F46; margin-top: 0;'>👇 AREA PASTE (CTRL + V) 👇</h4>
-                <p style='color: #047857; font-size: 14px; margin-bottom: 0;'><b>JANGAN KLIK TOMBOL UPLOAD/BROWSE!</b><br>Cukup klik KIRI sekali di kotak putih/abu-abu bawah ini, lalu langsung tekan <b>Ctrl + V</b>.</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            file_upload = st.file_uploader("Area Paste", type=['png', 'jpg', 'jpeg', 'webp'], label_visibility="collapsed")
-
-            img_to_save = None
-
-            if file_upload is not None:
-                b64_string = image_to_base64(file_upload)
-                if b64_string:
-                    st.image(file_upload, width=300, caption="Preview Upload (Siap Disimpan)")
-                    img_to_save = b64_string
+                barang_pilih = st.selectbox("2. Pilih Nama Produk yang Mau Diubah/Ditambah Gambarnya:", all_unique_items)
+                
+                current_row = df_studio[df_studio['NAMA BAKU'] == barang_pilih].iloc[-1]
+                current_link = str(current_row.get('LINK GAMBAR', '')).strip()
+                
+                if current_link and current_link.lower() not in ['nan', 'none', '']:
+                    st.warning("⚠️ **Barang ini sudah memiliki gambar.** Jika *upload* baru, gambar lama tertimpa.")
+                    curr_preview = process_image_url(current_link)
+                    if curr_preview: st.image(curr_preview, width=150, caption="Gambar Saat Ini")
                 else:
-                    st.error("Gagal membaca file gambar.")
-            
-            elif link_input:
-                if "shopee.co.id/" in link_input and "cf.shopee.co.id" not in link_input:
-                    st.error("⚠️ Oops! Ini link Halaman Produk Shopee. Silakan 'Copy Image Address'.")
-                elif "tokopedia.com/" in link_input and "images.tokopedia.net" not in link_input:
-                    st.error("⚠️ Oops! Ini link Halaman Produk Tokopedia. Silakan 'Copy Image Address'.")
-                else:
-                    img_preview = process_image_url(link_input)
-                    if img_preview:
+                    st.success("✅ Barang ini belum memiliki gambar.")
+
+                query_google = urllib.parse.quote(barang_pilih + " industri sparepart")
+                st.markdown(f"<a href='https://www.google.com/search?tbm=isch&q={query_google}' target='_blank'><button style='background-color:#4285F4; color:white; border:none; padding:8px 16px; border-radius:8px; cursor:pointer; font-weight:bold; margin-bottom:15px; margin-top:5px;'>🔍 Cari '{barang_pilih}' di Google</button></a>", unsafe_allow_html=True)
+
+                st.write("---")
+                st.write("**OPSI 1: Paste Link URL Gambar (Cara Lama)**")
+                link_input = st.text_input("Paste URL Link Gambar di sini:")
+                
+                st.write("**OPSI 2: Paste Gambar Fisik Langsung (Cara Cepat Ctrl+V)**")
+                
+                st.markdown("""
+                <div style='background-color: #F0FDF4; border: 2px dashed #34D399; padding: 15px; border-radius: 10px; text-align: center; margin-bottom: 10px;'>
+                    <h4 style='color: #065F46; margin-top: 0;'>👇 AREA PASTE (CTRL + V) 👇</h4>
+                    <p style='color: #047857; font-size: 14px; margin-bottom: 0;'><b>JANGAN KLIK TOMBOL UPLOAD/BROWSE!</b><br>Cukup klik KIRI sekali di kotak putih/abu-abu bawah ini, lalu langsung tekan <b>Ctrl + V</b>.</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                file_upload = st.file_uploader("Area Paste", type=['png', 'jpg', 'jpeg', 'webp'], label_visibility="collapsed")
+
+                img_to_save = None
+
+                if file_upload is not None:
+                    b64_string = image_to_base64(file_upload)
+                    if b64_string:
+                        st.image(file_upload, width=300, caption="Preview Upload (Siap Disimpan)")
+                        img_to_save = b64_string
+                    else:
+                        st.error("Gagal membaca file gambar.")
+                
+                elif link_input:
+                    if "shopee.co.id/" in link_input and "cf.shopee.co.id" not in link_input:
+                        st.error("⚠️ Oops! Ini link Halaman Produk Shopee. Silakan 'Copy Image Address'.")
+                    elif "tokopedia.com/" in link_input and "images.tokopedia.net" not in link_input:
+                        st.error("⚠️ Oops! Ini link Halaman Produk Tokopedia. Silakan 'Copy Image Address'.")
+                    else:
+                        img_preview = process_image_url(link_input)
+                        if img_preview:
+                            try:
+                                st.image(img_preview, width=300, caption="Preview Link (Siap Disimpan)")
+                                img_to_save = link_input
+                            except Exception:
+                                st.warning("⚠️ Link tidak valid atau tidak bisa dibuka.")
+
+                if img_to_save:
+                    if st.button("💾 Simpan Gambar ke Database", type="primary"):
                         try:
-                            st.image(img_preview, width=300, caption="Preview Link (Siap Disimpan)")
-                            img_to_save = link_input
-                        except Exception:
-                            st.warning("⚠️ Link tidak valid atau tidak bisa dibuka.")
-
-            if img_to_save:
-                if st.button("💾 Simpan Gambar ke Database", type="primary"):
-                    try:
-                        with st.spinner("Menembakkan gambar ke Master Data..."):
-                            client = get_gspread_client()
-                            sheet_master = client.open_by_key(SHEET_ID).get_worksheet(0)
-                            cell = sheet_master.find(barang_pilih, in_column=2)
-                            if cell:
-                                headers = sheet_master.row_values(1)
-                                if 'LINK GAMBAR' in headers:
-                                    col_link_idx = headers.index('LINK GAMBAR') + 1
-                                    sheet_master.update_cell(cell.row, col_link_idx, img_to_save)
-                                    st.success("✅ Success! Gambar berhasil diperbarui.")
-                                    time.sleep(1.5)
-                                    st.cache_data.clear()
-                                    st.rerun()
-                                else:
-                                    st.error("Kolom 'LINK GAMBAR' belum ada di baris pertama Master Anda.")
-                    except Exception as e:
-                        st.error(f"Error Database: {e}")
+                            with st.spinner("Menembakkan gambar ke Master Data..."):
+                                client = get_gspread_client()
+                                sheet_master = client.open_by_key(SHEET_ID).get_worksheet(0)
+                                cell = sheet_master.find(barang_pilih, in_column=2)
+                                if cell:
+                                    headers = sheet_master.row_values(1)
+                                    if 'LINK GAMBAR' in headers:
+                                        col_link_idx = headers.index('LINK GAMBAR') + 1
+                                        sheet_master.update_cell(cell.row, col_link_idx, img_to_save)
+                                        st.success("✅ Success! Gambar berhasil diperbarui.")
+                                        time.sleep(1.5)
+                                        st.cache_data.clear()
+                                        st.rerun()
+                                    else:
+                                        st.error("Kolom 'LINK GAMBAR' belum ada di baris pertama Master Anda.")
+                        except Exception as e:
+                            st.error(f"Error Database: {e}")
 
 # ==========================================
 # MENU 4: DATABASE VENDOR
@@ -1197,7 +1298,7 @@ elif menu == "Maintenance Data":
 st.markdown("---")
 st.markdown(
     "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v8.1 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
+    "ERP Purchasing System v9.2 | Proprietary of PT Panca Budi Idaman Tbk | Created with ❤️ for Raihan Subakti"
     "</p>", 
     unsafe_allow_html=True
 )
