@@ -1,7 +1,8 @@
 # ==============================================================================
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
+# Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 9.3 (EXECUTIVE EDITION + Luxury UI Login Experience)
+# Versi: 9.4 (EXECUTIVE EDITION + Omni-Update Asset Synchronization)
 # ==============================================================================
 
 import streamlit as st
@@ -194,7 +195,7 @@ if not st.session_state['logged_in']:
                 else:
                     st.error("❌ Akses Ditolak: Kode Sandi Tidak Valid")
                     
-    st.stop() # Menghentikan script agar menu utama tidak terbuka
+    st.stop() 
 
 # ==========================================
 # 4. HELPER FUNCTIONS
@@ -330,13 +331,12 @@ with st.sidebar:
 
     st.write("---")
     
-    # --- LOGIKA RBAC 2 PINTU ---
     user_role = st.session_state.get('role', 'VIEWER')
     
     if user_role == "ADMIN":
         menu_options = ["Pembersihan PO", "Pencarian Barang", "E-Catalog & Studio", "Database Vendor", "Dashboard Laporan", "Maintenance Data"]
         menu_icons = ["magic", "search", "images", "shop", "bar-chart-line", "tools"]
-    else: # PINTU TAMU (VIEWER) - DITAMBAHKAN DATABASE VENDOR
+    else: 
         menu_options = ["Pencarian Barang", "E-Catalog & Studio", "Database Vendor"]
         menu_icons = ["search", "images", "shop"]
     
@@ -943,24 +943,38 @@ elif menu == "E-Catalog & Studio":
                             except Exception:
                                 st.warning("⚠️ Link tidak valid atau tidak bisa dibuka.")
 
+                # --- FIX OMNI-UPDATE (UPDATE SELURUH HISTORI BARANG TERSEBUT) ---
                 if img_to_save:
                     if st.button("💾 Simpan Gambar ke Database", type="primary"):
                         try:
-                            with st.spinner("Menembakkan gambar ke Master Data..."):
+                            with st.spinner("Menembakkan gambar ke Seluruh Histori Master Data..."):
                                 client = get_gspread_client()
                                 sheet_master = client.open_by_key(SHEET_ID).get_worksheet(0)
-                                cell = sheet_master.find(barang_pilih, in_column=2)
-                                if cell:
-                                    headers = sheet_master.row_values(1)
-                                    if 'LINK GAMBAR' in headers:
-                                        col_link_idx = headers.index('LINK GAMBAR') + 1
-                                        sheet_master.update_cell(cell.row, col_link_idx, img_to_save)
-                                        st.success("✅ Success! Gambar berhasil diperbarui.")
+                                
+                                headers = sheet_master.row_values(1)
+                                headers_upper = [str(h).strip().upper() for h in headers]
+                                
+                                if 'LINK GAMBAR' in headers_upper:
+                                    col_link_idx = headers_upper.index('LINK GAMBAR') + 1
+                                    
+                                    # Cari SEMUA baris yang namanya sama persis menggunakan df_master
+                                    matching_indices = df_master[df_master['NAMA BAKU'].astype(str).str.strip().str.upper() == barang_pilih.strip().upper()].index
+                                    matching_rows = [idx + 2 for idx in matching_indices] # +2 karena di excel header di row 1, data mulai row 2
+                                    
+                                    if matching_rows:
+                                        # Lakukan Update ke semua baris yang ditemukan
+                                        for r_idx in matching_rows:
+                                            sheet_master.update_cell(r_idx, col_link_idx, img_to_save)
+                                            time.sleep(0.5) # Jeda sedikit agar tidak kena limit API Google
+                                            
+                                        st.success(f"✅ Success! Gambar berhasil ditanam di {len(matching_rows)} baris histori data.")
                                         time.sleep(1.5)
                                         st.cache_data.clear()
                                         st.rerun()
                                     else:
-                                        st.error("Kolom 'LINK GAMBAR' belum ada di baris pertama Master Anda.")
+                                        st.error("Barang tidak ditemukan di database.")
+                                else:
+                                    st.error("Kolom 'LINK GAMBAR' belum ada di baris pertama Master Anda.")
                         except Exception as e:
                             st.error(f"Error Database: {e}")
 
@@ -1332,7 +1346,7 @@ elif menu == "Maintenance Data":
 st.markdown("---")
 st.markdown(
     "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v9.3 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
+    "ERP Purchasing System v9.4 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
     "</p>", 
     unsafe_allow_html=True
 )
