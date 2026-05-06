@@ -2,7 +2,7 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 9.4 (EXECUTIVE EDITION + Omni-Update Asset Synchronization)
+# Versi: 9.5 (EXECUTIVE EDITION + Batch Update Anti-Limit API)
 # ==============================================================================
 
 import streamlit as st
@@ -283,6 +283,14 @@ def create_metric_card(icon_class, title, value):
         <div style="color:#0F172A; font-size:22px; font-weight:800; line-height:1.3; word-wrap:break-word;">{value}</div>
     </div>
     """
+
+# FITUR ANTI-LIMIT API GOOGLE: Konversi nomor kolom jadi huruf (Misal: 1 -> A, 2 -> B)
+def col_num_to_letter(n):
+    string = ""
+    while n > 0:
+        n, remainder = divmod(n - 1, 26)
+        string = chr(65 + remainder) + string
+    return string
 
 # ==========================================
 # 5. LOAD & PERSIAPAN MASTER DATA
@@ -943,31 +951,41 @@ elif menu == "E-Catalog & Studio":
                             except Exception:
                                 st.warning("⚠️ Link tidak valid atau tidak bisa dibuka.")
 
-                # --- FIX OMNI-UPDATE (UPDATE SELURUH HISTORI BARANG TERSEBUT) ---
+                # --- FITUR ANTI-LIMIT API BATCH UPDATE (V9.5) ---
                 if img_to_save:
                     if st.button("💾 Simpan Gambar ke Database", type="primary"):
                         try:
-                            with st.spinner("Menembakkan gambar ke Seluruh Histori Master Data..."):
+                            with st.spinner("Membungkus data dan menembakkan ke Server Google..."):
                                 client = get_gspread_client()
                                 sheet_master = client.open_by_key(SHEET_ID).get_worksheet(0)
                                 
-                                headers = sheet_master.row_values(1)
-                                headers_upper = [str(h).strip().upper() for h in headers]
+                                # Ambil semua data sekaligus biar gak buang-buang kuota API
+                                all_data = sheet_master.get_all_values()
+                                headers_upper = [str(h).strip().upper() for h in all_data[0]]
                                 
                                 if 'LINK GAMBAR' in headers_upper:
-                                    col_link_idx = headers_upper.index('LINK GAMBAR') + 1
+                                    col_link_idx = headers_upper.index('LINK GAMBAR') + 1 # Gspread column 1-based
+                                    col_letter = col_num_to_letter(col_link_idx)
                                     
-                                    # Cari SEMUA baris yang namanya sama persis menggunakan df_master
+                                    # Cari index baris dari df_master (0-based)
                                     matching_indices = df_master[df_master['NAMA BAKU'].astype(str).str.strip().str.upper() == barang_pilih.strip().upper()].index
-                                    matching_rows = [idx + 2 for idx in matching_indices] # +2 karena di excel header di row 1, data mulai row 2
+                                    
+                                    # Convert ke row Google Sheet (Header = 1, Data mulai = 2)
+                                    matching_rows = [idx + 2 for idx in matching_indices]
                                     
                                     if matching_rows:
-                                        # Lakukan Update ke semua baris yang ditemukan
+                                        # BUNGKUS SEMUA UPDATE JADI 1 PAKET BATCH
+                                        batch_data = []
                                         for r_idx in matching_rows:
-                                            sheet_master.update_cell(r_idx, col_link_idx, img_to_save)
-                                            time.sleep(0.5) # Jeda sedikit agar tidak kena limit API Google
+                                            batch_data.append({
+                                                'range': f"{col_letter}{r_idx}",
+                                                'values': [[img_to_save]]
+                                            })
                                             
-                                        st.success(f"✅ Success! Gambar berhasil ditanam di {len(matching_rows)} baris histori data.")
+                                        # Tembak ke Google dalam 1x API Call ajaib
+                                        sheet_master.batch_update(batch_data)
+                                            
+                                        st.success(f"✅ Success! Gambar berhasil ditanam di {len(matching_rows)} histori transaksi.")
                                         time.sleep(1.5)
                                         st.cache_data.clear()
                                         st.rerun()
@@ -976,7 +994,7 @@ elif menu == "E-Catalog & Studio":
                                 else:
                                     st.error("Kolom 'LINK GAMBAR' belum ada di baris pertama Master Anda.")
                         except Exception as e:
-                            st.error(f"Error Database: {e}")
+                            st.error(f"Error Database (Coba muat ulang halaman): {e}")
 
 # ==========================================
 # MENU 4: DATABASE VENDOR
@@ -1346,7 +1364,7 @@ elif menu == "Maintenance Data":
 st.markdown("---")
 st.markdown(
     "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v9.4 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
+    "ERP Purchasing System v9.5 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti"
     "</p>", 
     unsafe_allow_html=True
 )
