@@ -2,7 +2,7 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 10.1 (EXECUTIVE EDITION + Hybrid Auto-Timestamp Audit Trail)
+# Versi: 11.0 (FULL VERSION - Dynamic Pricing + Smart Audit Trail)
 # ==============================================================================
 
 import streamlit as st
@@ -166,96 +166,7 @@ def get_sync_time():
     return f"{now.day} {bulan[now.month]} {now.year}, {now.strftime('%H:%M')} WIB"
 
 # ==========================================
-# 3. SISTEM KEAMANAN LUXURY (2 PINTU LOGIN)
-# ==========================================
-if 'logged_in' not in st.session_state:
-    st.session_state['logged_in'] = False
-
-if not st.session_state['logged_in']:
-    st.markdown("""
-        <div style="text-align: center; margin-top: 1vh; margin-bottom: 2vh;">
-            <div style="display: inline-block; background: #ECFDF5; color: #047857; padding: 4px 12px; border-radius: 20px; font-size: 10px; font-weight: 800; letter-spacing: 1.5px; margin-bottom: 12px;">SECURE LOGIN PORTAL</div>
-            <h1 style="color: #064E3B; font-weight: 800; font-size: 36px; letter-spacing: -1px; margin: 0;">PANCA BUDI</h1>
-            <p style="color: #64748B; font-weight: 700; letter-spacing: 3px; font-size: 11px; text-transform: uppercase; margin-top: 5px;">Enterprise Procurement System</p>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    # --- OPSI 1: EXPANDER GUIDE BOOK DI TENGAH ---
-    _, col_guide, _ = st.columns([1.5, 5.3, 1.5])
-    with col_guide:
-        with st.expander("📖 PANDUAN PENGGUNAAN SISTEM (Klik untuk membaca)"):
-            st.markdown("""
-            **Selamat datang di ERP Purchasing PT Panca Budi Idaman Tbk!**
-            Sistem ini dirancang untuk mempermudah operasional *Supply Chain*, pencarian spesifikasi barang, dan standardisasi data antar seluruh pabrik.
-
-            ---
-            **🚪 1. PINTU TAMU (Guest Access)**
-            Dikhususkan untuk staf Pabrik atau Gudang.
-            * **Akses Masuk:** Tidak memerlukan kata sandi. Langsung klik tombol putih *"Masuk Sebagai Tamu"*.
-            * **Fitur Terbuka:** * `Pencarian Barang`: Ketik nama barang/SKU untuk mencari spesifikasi standar pusat.
-                * `E-Catalog`: Melihat foto fisik barang, estimasi harga terakhir, dan download PDF Katalog.
-                * `Database Vendor`: Mencari nomor telepon dan nama PIC Supplier.
-            * *Catatan: Modul Tamu bersifat "Read-Only". Anda tidak dapat menghapus atau merubah data apapun.*
-
-            **👑 2. PINTU ADMIN (Admin Portal)**
-            Dikhususkan untuk tim Holding Purchasing Pusat.
-            * **Akses Masuk:** Wajib memasukkan Kata Sandi Rahasia Otoritas.
-            * **Fitur Ekstra Terbuka:**
-                * `Pembersihan PO`: Mesin AI untuk menyamakan nama laporan mentah dari plant (RA, PGP, Tangerang, dll) ke dalam bahasa standar Holding.
-                * `Asset Studio`: Fitur Injeksi Gambar. **TIPS CEPAT:** Anda tidak perlu repot klik tombol *upload file*. Cukup salin gambar dari Google (Klik Kanan -> Copy Image), klik kotak abu-abu di aplikasi, dan langsung tekan **Ctrl+V (Paste)**.
-                * `Dashboard Laporan`: Akses *Executive Filter* dan AI Forecasting.
-            
-            ---
-            *Bila Anda mengalami kendala teknis, silakan hubungi Tim Purchasing Holding Pusat.*
-            """)
-    
-    st.markdown("<div style='margin-bottom: 2.5vh;'></div>", unsafe_allow_html=True)
-    
-    col_space1, col_tamu, col_gap, col_admin, col_space2 = st.columns([1.5, 2.5, 0.3, 2.5, 1.5])
-    
-    with col_tamu:
-        st.markdown("""
-            <div style="text-align: center; padding: 20px 15px 15px 15px; background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.02); height: 100%; margin-bottom: 15px;">
-                <div style="font-size: 40px; margin-bottom: 10px;">🏢</div>
-                <h3 style="color: #0F172A; font-weight: 800; font-size: 18px; margin-bottom: 8px;">Guest Access</h3>
-                <p style="color: #64748B; font-size: 12px; line-height: 1.4; margin-bottom: 5px; padding: 0 10px;">
-                    Jelajahi E-Catalog, spesifikasi SKU, dan direktori Vendor tanpa otorisasi.
-                </p>
-            </div>
-        """, unsafe_allow_html=True)
-        if st.button("Masuk Sebagai Tamu", use_container_width=True, type="secondary"):
-            st.session_state['logged_in'] = True
-            st.session_state['role'] = "VIEWER"
-            st.session_state['nama'] = "Tamu Pabrik"
-            st.rerun()
-
-    with col_admin:
-        st.markdown("""
-            <div style="text-align: center; padding: 20px 15px 15px 15px; background-color: #F0FDF4; border: 1px solid #A7F3D0; border-radius: 16px; box-shadow: 0 4px 6px rgba(4,120,87,0.05); height: 100%; margin-bottom: 15px;">
-                <div style="font-size: 40px; margin-bottom: 10px;">🛡️</div>
-                <h3 style="color: #064E3B; font-weight: 800; font-size: 18px; margin-bottom: 8px;">Admin Portal</h3>
-                <p style="color: #047857; font-size: 12px; line-height: 1.4; margin-bottom: 5px; padding: 0 10px;">
-                    Akses penuh ke modul pembersihan data, laporan, dan master maintenance.
-                </p>
-            </div>
-        """, unsafe_allow_html=True)
-        with st.form("form_admin"):
-            input_pass = st.text_input("Kode Akses", type="password", placeholder="••••••••", label_visibility="collapsed")
-            btn_login = st.form_submit_button("Otorisasi Akses", use_container_width=True, type="primary")
-            
-            if btn_login:
-                if input_pass == PASSWORD_ADMIN:
-                    st.session_state['logged_in'] = True
-                    st.session_state['role'] = "ADMIN"
-                    st.session_state['nama'] = "Admin Purchasing"
-                    st.rerun()
-                else:
-                    st.error("❌ Akses Ditolak: Kode Sandi Tidak Valid")
-                    
-    st.stop() 
-
-# ==========================================
-# 4. HELPER FUNCTIONS
+# 3. HELPER FUNCTIONS
 # ==========================================
 def format_rupiah(angka):
     try:
@@ -349,9 +260,10 @@ def col_num_to_letter(n):
     return string
 
 # ==========================================
-# 5. LOAD & PERSIAPAN MASTER DATA
+# 4. LOAD CORE DATA & DYNAMIC PRICING LOGIC
 # ==========================================
 try:
+    # 4.1 Load Master Data (Sheet 1)
     df_master = load_data(GID_MASTER)
     df_master.columns = df_master.columns.str.strip().str.upper()
     df_master = df_master.dropna(subset=['NAMA BAKU'])
@@ -359,15 +271,136 @@ try:
     if 'KATEGORI' in df_master.columns: df_master['KATEGORI'] = df_master['KATEGORI'].ffill().astype(str).str.strip().str.upper()
     if 'DETAIL KATEGORI' in df_master.columns: df_master['DETAIL KATEGORI'] = df_master['DETAIL KATEGORI'].ffill().astype(str).str.strip().str.upper()
     
-    df_master['AI_LOOKUP'] = df_master['NAMA BAKU'].astype(str).str.upper()
-    if 'NAMA ITEM' in df_master.columns: df_master['AI_LOOKUP'] += " " + df_master['NAMA ITEM'].fillna("").astype(str).str.upper()
+    # 4.2 Load Histori Transaksi (Sheet 3) - UNTUK HARGA TERBARU (LIVE PRICING)
+    df_trans = load_data(GID_DASHBOARD)
+    df_trans.columns = df_trans.columns.str.strip().str.upper()
+    
+    c_tgl_h = next((c for c in df_trans.columns if 'TANGGAL' in c or 'TGL' in c or 'DATE' in c and 'REKAP' not in c), None)
+    c_harga_h = next((c for c in df_trans.columns if 'HARGA' in c), None)
+    c_baku_h = next((c for c in df_trans.columns if 'BAKU' in c), None)
+    
+    latest_price_map = {}
+    if c_tgl_h and c_harga_h and c_baku_h:
+        # Konversi ke datetime yang aman
+        df_trans['DATE_TEMP'] = pd.to_datetime(df_trans[c_tgl_h], errors='coerce')
+        # Buat kolom harga numerik
+        df_trans['PRICE_TEMP'] = df_trans[c_harga_h].apply(parse_harga)
+        df_valid_trans = df_trans.dropna(subset=['DATE_TEMP', 'PRICE_TEMP', c_baku_h])
         
-    df_master_unique = df_master.drop_duplicates(subset=['NAMA BAKU'], keep='last')
-    mapping_master = df_master_unique.set_index('NAMA BAKU').to_dict('index')
+        if not df_valid_trans.empty:
+            # Sortir: Barang yang sama, Tanggal paling baru di atas
+            df_sorted = df_valid_trans.sort_values(by=[c_baku_h, 'DATE_TEMP'], ascending=[True, False])
+            # Ambil baris pertama (terbaru) untuk tiap barang
+            df_latest = df_sorted.drop_duplicates(subset=[c_baku_h])
+            # Simpan ke Kamus Harga
+            for _, row in df_latest.iterrows():
+                latest_price_map[str(row[c_baku_h]).strip().upper()] = row['PRICE_TEMP']
+
+    # 4.3 Mapping AI Lookup
+    df_master['AI_LOOKUP'] = df_master['NAMA BAKU'].astype(str).str.upper()
+    if 'NAMA ITEM' in df_master.columns: 
+        df_master['AI_LOOKUP'] += " " + df_master['NAMA ITEM'].fillna("").astype(str).str.upper()
+        
     search_list = df_master['AI_LOOKUP'].tolist()
     lookup_to_baku_map = dict(zip(df_master['AI_LOOKUP'], df_master['NAMA BAKU']))
+    
+    # Mapping Master Info (Unique NAMA BAKU untuk E-Catalog)
+    df_master_clean = df_master.drop_duplicates(subset=['NAMA BAKU'], keep='last').copy()
+    mapping_master_info = df_master_clean.set_index('NAMA BAKU').to_dict('index')
+
 except Exception as e:
-    st.error(f"⚠️ Gagal Load Master Data: {e}"); st.stop()
+    st.error(f"⚠️ Gagal Load Database Utama: {e}"); st.stop()
+
+
+# ==========================================
+# 5. SISTEM KEAMANAN LUXURY (2 PINTU LOGIN)
+# ==========================================
+if 'logged_in' not in st.session_state:
+    st.session_state['logged_in'] = False
+
+if not st.session_state['logged_in']:
+    st.markdown("""
+        <div style="text-align: center; margin-top: 1vh; margin-bottom: 2vh;">
+            <div style="display: inline-block; background: #ECFDF5; color: #047857; padding: 4px 12px; border-radius: 20px; font-size: 10px; font-weight: 800; letter-spacing: 1.5px; margin-bottom: 12px;">SECURE LOGIN PORTAL</div>
+            <h1 style="color: #064E3B; font-weight: 800; font-size: 36px; letter-spacing: -1px; margin: 0;">PANCA BUDI</h1>
+            <p style="color: #64748B; font-weight: 700; letter-spacing: 3px; font-size: 11px; text-transform: uppercase; margin-top: 5px;">Enterprise Procurement System</p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # --- EXPANDER GUIDE BOOK DI TENGAH ---
+    _, col_guide, _ = st.columns([1.5, 5.3, 1.5])
+    with col_guide:
+        with st.expander("📖 PANDUAN PENGGUNAAN SISTEM (Klik untuk membaca)"):
+            st.markdown("""
+            **Selamat datang di ERP Purchasing PT Panca Budi Idaman Tbk!**
+            Sistem ini dirancang untuk mempermudah operasional *Supply Chain*, pencarian spesifikasi barang, dan standardisasi data antar seluruh pabrik.
+
+            ---
+            **🚪 1. PINTU TAMU (Guest Access)**
+            Dikhususkan untuk staf Pabrik atau Gudang.
+            * **Akses Masuk:** Tidak memerlukan kata sandi. Langsung klik tombol putih *"Masuk Sebagai Tamu"*.
+            * **Fitur Terbuka:** * `Pencarian Barang`: Ketik nama barang/SKU untuk mencari spesifikasi standar pusat.
+                * `E-Catalog`: Melihat foto fisik barang, estimasi harga terakhir, dan download PDF Katalog.
+                * `Database Vendor`: Mencari nomor telepon dan nama PIC Supplier.
+            * *Catatan: Modul Tamu bersifat "Read-Only". Anda tidak dapat menghapus atau merubah data apapun.*
+
+            **👑 2. PINTU ADMIN (Admin Portal)**
+            Dikhususkan untuk tim Holding Purchasing Pusat.
+            * **Akses Masuk:** Wajib memasukkan Kata Sandi Rahasia Otoritas.
+            * **Fitur Ekstra Terbuka:**
+                * `Pembersihan PO`: Mesin AI untuk menyamakan nama laporan mentah dari plant (RA, PGP, Tangerang, dll) ke dalam bahasa standar Holding.
+                * `Asset Studio`: Fitur Injeksi Gambar. **TIPS CEPAT:** Anda tidak perlu repot klik tombol *upload file*. Cukup salin gambar dari Google (Klik Kanan -> Copy Image), klik kotak abu-abu di aplikasi, dan langsung tekan **Ctrl+V (Paste)**.
+                * `Dashboard Laporan`: Akses *Executive Filter* dan AI Forecasting.
+            
+            ---
+            *Bila Anda mengalami kendala teknis, silakan hubungi Tim Purchasing Holding Pusat.*
+            """)
+    
+    st.markdown("<div style='margin-bottom: 2.5vh;'></div>", unsafe_allow_html=True)
+    
+    col_space1, col_tamu, col_gap, col_admin, col_space2 = st.columns([1.5, 2.5, 0.3, 2.5, 1.5])
+    
+    with col_tamu:
+        st.markdown("""
+            <div style="text-align: center; padding: 20px 15px 15px 15px; background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.02); height: 100%; margin-bottom: 15px;">
+                <div style="font-size: 40px; margin-bottom: 10px;">🏢</div>
+                <h3 style="color: #0F172A; font-weight: 800; font-size: 18px; margin-bottom: 8px;">Guest Access</h3>
+                <p style="color: #64748B; font-size: 12px; line-height: 1.4; margin-bottom: 5px; padding: 0 10px;">
+                    Jelajahi E-Catalog, spesifikasi SKU, dan direktori Vendor tanpa otorisasi.
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
+        if st.button("Masuk Sebagai Tamu", use_container_width=True, type="secondary"):
+            st.session_state['logged_in'] = True
+            st.session_state['role'] = "VIEWER"
+            st.session_state['nama'] = "Tamu Pabrik"
+            st.rerun()
+
+    with col_admin:
+        st.markdown("""
+            <div style="text-align: center; padding: 20px 15px 15px 15px; background-color: #F0FDF4; border: 1px solid #A7F3D0; border-radius: 16px; box-shadow: 0 4px 6px rgba(4,120,87,0.05); height: 100%; margin-bottom: 15px;">
+                <div style="font-size: 40px; margin-bottom: 10px;">🛡️</div>
+                <h3 style="color: #064E3B; font-weight: 800; font-size: 18px; margin-bottom: 8px;">Admin Portal</h3>
+                <p style="color: #047857; font-size: 12px; line-height: 1.4; margin-bottom: 5px; padding: 0 10px;">
+                    Akses penuh ke modul pembersihan data, laporan, dan master maintenance.
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
+        with st.form("form_admin"):
+            input_pass = st.text_input("Kode Akses", type="password", placeholder="••••••••", label_visibility="collapsed")
+            btn_login = st.form_submit_button("Otorisasi Akses", use_container_width=True, type="primary")
+            
+            if btn_login:
+                if input_pass == PASSWORD_ADMIN:
+                    st.session_state['logged_in'] = True
+                    st.session_state['role'] = "ADMIN"
+                    st.session_state['nama'] = "Admin Purchasing"
+                    st.rerun()
+                else:
+                    st.error("❌ Akses Ditolak: Kode Sandi Tidak Valid")
+                    
+    st.stop() 
+
 
 # ==========================================
 # 6. SIDEBAR NAVIGATION (DYNAMIC RBAC)
@@ -733,7 +766,7 @@ if menu == "Pembersihan PO":
                 for r in extracted_rows:
                     match = process.extractOne(str(r['ITEM_KOTOR']).upper(), search_list, scorer=fuzz.token_set_ratio)
                     if match and match[1] >= 75:
-                        baku = lookup_to_baku_map[match[0]]; info = mapping_master.get(baku, {})
+                        baku = lookup_to_baku_map[match[0]]; info = mapping_master_info.get(baku, {})
                         final_draft.append({
                             "❌ BUKAN SCOPE": False,
                             "UNIT": r['UNIT KERJA'], "PO": r['NO PO'], "TANGGAL": r['TANGGAL'], 
@@ -811,7 +844,7 @@ if menu == "Pembersihan PO":
                         
                         data_to_push = []
                         for _, r in df_to_save.iterrows():
-                            info = mapping_master.get(r['NAMA_BAKU'], {})
+                            info = mapping_master_info.get(r['NAMA_BAKU'], {})
                             if r['NAMA_BAKU'] != "⚠️ BARANG BARU":
                                 kat_final = info.get('KATEGORI', '-')
                                 det_kat_final = info.get('DETAIL KATEGORI', '-')
@@ -849,7 +882,7 @@ if menu == "Pembersihan PO":
                 tgl_rekap_export = waktu_sekarang.strftime("%Y-%m-%d %H:%M:%S") if auto_time else manual_date.strftime("%Y-%m-%d")
 
                 for _, r in df_to_export.iterrows():
-                    info = mapping_master.get(r['NAMA_BAKU'], {})
+                    info = mapping_master_info.get(r['NAMA_BAKU'], {})
                     if r['NAMA_BAKU'] != "⚠️ BARANG BARU":
                         kat_final = info.get('KATEGORI', '-')
                         det_kat_final = info.get('DETAIL KATEGORI', '-')
@@ -892,12 +925,13 @@ elif menu == "Pencarian Barang":
         res_list = []
         for m in hasil:
             if m[1] >= 40:
-                baku = lookup_to_baku_map[m[0]]; info = mapping_master.get(baku, {})
-                res_list.append({"Match": f"{m[1]}%", "Nama Baku": baku, "SKU": info.get('NOMOR SKU', '-'), "Kategori": info.get('KATEGORI', '-'), "Est. Harga": format_rupiah(info.get('HARGA', 0)), "Last Vendor": info.get('VENDOR', '-')})
+                baku = lookup_to_baku_map[m[0]]; info = mapping_master_info.get(baku, {})
+                harga_live = latest_price_map.get(str(baku).strip().upper(), 0)
+                res_list.append({"Match": f"{m[1]}%", "Nama Baku": baku, "SKU": info.get('NOMOR SKU', '-'), "Kategori": info.get('KATEGORI', '-'), "Est. Harga Live": format_rupiah(harga_live)})
         st.dataframe(pd.DataFrame(res_list), use_container_width=True)
 
 # ==========================================
-# MENU 3: E-CATALOG & STUDIO GAMBAR
+# MENU 3: E-CATALOG & STUDIO GAMBAR (V11.0 LIVE PRICING)
 # ==========================================
 elif menu == "E-Catalog & Studio":
     st.markdown("<h2>🖼️ Enterprise Digital Catalog</h2>", unsafe_allow_html=True)
@@ -907,14 +941,14 @@ elif menu == "E-Catalog & Studio":
         col_s, col_f, col_sort = st.columns([2, 1, 1])
         with col_s: search_cat = st.text_input("🔍 Cari Produk:", placeholder="Ketik nama atau SKU...")
         with col_f:
-            list_kat = ["Semua Kategori"] + sorted([k for k in df_master['KATEGORI'].unique() if str(k).strip() != "" and str(k).strip() != "nan"])
+            list_kat = ["Semua Kategori"] + sorted([k for k in df_master_clean['KATEGORI'].unique() if str(k).strip() != "" and str(k).strip() != "nan"])
             filter_cat = st.selectbox("📁 Filter Kategori:", list_kat)
         with col_sort:
-            sort_by = st.selectbox("⬇️ Urutkan Berdasarkan:", ["Terbaru", "Nama (A-Z)", "Nama (Z-A)", "Harga (Termurah)", "Harga (Termahal)"])
+            sort_by = st.selectbox("⬇️ Urutkan Berdasarkan:", ["Nama (A-Z)", "Nama (Z-A)"])
 
         missing_only = st.checkbox("⚠️ Tampilkan HANYA barang tanpa gambar (Missing Assets)")
 
-        df_show = df_master.drop_duplicates(subset=['NAMA BAKU'], keep='last').copy()
+        df_show = df_master_clean.copy()
         
         if filter_cat != "Semua Kategori": df_show = df_show[df_show['KATEGORI'] == filter_cat]
         if search_cat: df_show = df_show[df_show['NAMA BAKU'].astype(str).str.contains(search_cat, case=False) | df_show['NOMOR SKU'].astype(str).str.contains(search_cat, case=False)]
@@ -922,17 +956,16 @@ elif menu == "E-Catalog & Studio":
         
         if sort_by == "Nama (A-Z)": df_show = df_show.sort_values(by='NAMA BAKU', ascending=True)
         elif sort_by == "Nama (Z-A)": df_show = df_show.sort_values(by='NAMA BAKU', ascending=False)
-        elif sort_by == "Harga (Termurah)": df_show = df_show.sort_values(by='HARGA', ascending=True)
-        elif sort_by == "Harga (Termahal)": df_show = df_show.sort_values(by='HARGA', ascending=False)
         
         st.markdown("---")
         
         if df_show.empty: 
             st.warning("Data tidak ditemukan.")
         else:
-            html_content = f"<h2>Katalog Produk PT Panca Budi ({filter_cat})</h2><table border='1' style='border-collapse: collapse; width: 100%;'><tr><th>SKU</th><th>NAMA BARANG</th><th>HARGA</th></tr>"
+            html_content = f"<h2>Katalog Produk PT Panca Budi ({filter_cat})</h2><table border='1' style='border-collapse: collapse; width: 100%;'><tr><th>SKU</th><th>NAMA BARANG</th><th>HARGA TERBARU</th></tr>"
             for _, r in df_show.iterrows():
-                html_content += f"<tr><td>{r.get('NOMOR SKU', '-')}</td><td>{r.get('NAMA BAKU', '-')}</td><td>{format_rupiah(r.get('HARGA', 0))}</td></tr>"
+                harga_live_print = latest_price_map.get(str(r.get('NAMA BAKU','')).strip().upper(), 0)
+                html_content += f"<tr><td>{r.get('NOMOR SKU', '-')}</td><td>{r.get('NAMA BAKU', '-')}</td><td>{format_rupiah(harga_live_print)}</td></tr>"
             html_content += "</table><br><p>Dicetak dari Sistem ERP Purchasing</p>"
             
             st.download_button("🖨️ Download Katalog PDF (HTML Print)", data=html_content, file_name=f"Katalog_{datetime.date.today()}.html", mime="text/html")
@@ -951,6 +984,10 @@ elif menu == "E-Catalog & Studio":
             cols = st.columns(4)
             for idx, (_, row) in enumerate(df_page.iterrows()): 
                 with cols[idx % 4]:
+                    baku = row['NAMA BAKU']
+                    # AMBIL HARGA TERBARU DARI RADAR (SHEET 3)
+                    harga_live = latest_price_map.get(str(baku).strip().upper(), None)
+                    
                     raw_link = str(row.get('LINK GAMBAR', '')).strip()
                     img_url = process_image_url(raw_link) 
                     
@@ -959,12 +996,18 @@ elif menu == "E-Catalog & Studio":
                     else:
                         img_element = f"<div style='background-color:#F1F5F9; height:160px; border-radius:8px; display:flex; align-items:center; justify-content:center; margin-bottom:12px;'><span style='color:#94A3B8; font-weight:600;'>No Image Asset</span></div>"
                     
+                    harga_display = f"<span style='color:#047857; font-weight:800; font-size:16px;'>{format_rupiah(harga_live)}</span>" if harga_live else "<span style='color:#EF4444; font-size:11px; font-weight:600;'>Belum ada histori harga</span>"
+                    badge_live = "<span style='background:#ECFDF5; border: 1px solid #A7F3D0; color:#047857; font-size:9px; padding:3px 8px; border-radius:12px; font-weight:700;'>LIVE PRICE</span>" if harga_live else ""
+
                     card_html = f"""
                     <div style='background:white; border:1px solid #E2E8F0; border-radius:12px; padding:16px; margin-bottom:16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); transition: 0.3s;'>
                         {img_element}
-                        <h5 style='margin-top:0px; font-size:14px; font-weight:700; color:#0F172A; line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;'>{row['NAMA BAKU']}</h5>
+                        <h5 style='margin-top:0px; font-size:14px; font-weight:700; color:#0F172A; line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;'>{baku}</h5>
                         <p style='font-size:11px; color:#64748B; margin:4px 0;'>SKU: {row.get('NOMOR SKU', '-')}</p>
-                        <p style='font-size:15px; font-weight:800; color:#047857; margin-top:8px; margin-bottom:0px;'>{format_rupiah(row.get('HARGA', 0))}</p>
+                        <div style='display:flex; justify-content:space-between; align-items:center; margin-top:10px;'>
+                            {harga_display}
+                            {badge_live}
+                        </div>
                     </div>
                     """
                     st.markdown(card_html, unsafe_allow_html=True)
@@ -977,9 +1020,9 @@ elif menu == "E-Catalog & Studio":
             
             if 'LINK GAMBAR' not in df_master.columns: df_master['LINK GAMBAR'] = ""
             
-            studio_kat = st.selectbox("1. Filter Kategori Barang:", ["Semua Kategori"] + sorted([k for k in df_master['KATEGORI'].unique() if str(k).strip() != "" and str(k).strip() != "nan"]))
+            studio_kat = st.selectbox("1. Filter Kategori Barang:", ["Semua Kategori"] + sorted([k for k in df_master_clean['KATEGORI'].unique() if str(k).strip() != "" and str(k).strip() != "nan"]))
             
-            df_studio = df_master.drop_duplicates(subset=['NAMA BAKU'], keep='last')
+            df_studio = df_master_clean.copy()
             if studio_kat != "Semua Kategori": df_studio = df_studio[df_studio['KATEGORI'] == studio_kat]
             
             all_unique_items = df_studio['NAMA BAKU'].tolist()
@@ -1123,7 +1166,7 @@ elif menu == "Dashboard Laporan":
             c_unit = next((c for c in df_d.columns if 'UNIT' in c or 'GRUP' in c), None)
             c_harga = next((c for c in df_d.columns if 'HARGA' in c), None)
             c_baku = next((c for c in df_d.columns if 'BAKU' in c), None)
-            c_tgl = next((c for c in df_d.columns if 'TANGGAL' in c or 'TGL' in c or 'DATE' in c), None)
+            c_tgl = next((c for c in df_d.columns if 'TANGGAL' in c or 'TGL' in c or 'DATE' in c and 'REKAP' not in c), None)
             
             df_d['H_NUM'] = df_d[c_harga].apply(parse_harga)
             df_d['Q_NUM'] = pd.to_numeric(df_d['QTY'].astype(str).str.replace(r'[^0-9.]', '', regex=True), errors='coerce').fillna(0)
@@ -1397,7 +1440,7 @@ elif menu == "Maintenance Data":
                     st.error(f"Error: {e}")
 
         if 'preview_sku_list' in st.session_state:
-            st.info("💡 **Silakan review dan edit manual di kolom 'SKU BARU' dan 'TANGGAL' pada tabel di bawah ini jika diperlukan.**")
+            st.info("💡 **Silakan review dan edit manual di kolom 'SKU BARU' pada tabel di bawah ini jika diperlukan.**")
             
             edited_preview = st.data_editor(
                 st.session_state['preview_sku_list'],
@@ -1448,7 +1491,7 @@ st.markdown("---")
 sync_time = get_sync_time()
 st.markdown(
     f"<p style='text-align: center; color: #94A3B8; font-size: 12px; line-height: 1.5;'>"
-    f"ERP Purchasing System v10.1 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti<br>"
+    f"ERP Purchasing System v11.0 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti<br>"
     f"<span style='color: #10B981; font-weight: 600;'>🟢 Live Database tersinkronisasi pada: {sync_time}</span>"
     f"</p>", 
     unsafe_allow_html=True
