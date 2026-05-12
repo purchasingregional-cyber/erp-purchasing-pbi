@@ -2,8 +2,8 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 11.2 (ULTIMATE FULL VERSION - 1400+ Lines)
-# Fitur: Dynamic Pricing, Double Injection (Sheet 3 & 4), Full Dashboard, Full Extractor
+# Versi: 11.3 (ULTRA LIVE PRICING - Tampil Tanggal PO Terakhir)
+# Fitur: Dynamic Pricing w/ Date, Double Injection (Sheet 3 & 4), Full Dashboard, Full Extractor
 # ==============================================================================
 
 import streamlit as st
@@ -276,7 +276,8 @@ try:
     df_trans = load_data(GID_DASHBOARD)
     df_trans.columns = df_trans.columns.str.strip().str.upper()
     
-    c_tgl_h = next((c for c in df_trans.columns if 'TANGGAL' in c or 'TGL' in c or 'DATE' in c and 'REKAP' not in c), None)
+    # PERBAIKAN FATAL: Memastikan robot HANYA mengambil kolom Tanggal PO (Bukan Tanggal Rekap)
+    c_tgl_h = next((c for c in df_trans.columns if ('TANGGAL' in c or 'TGL' in c or 'DATE' in c) and 'REKAP' not in c), None)
     c_harga_h = next((c for c in df_trans.columns if 'HARGA' in c), None)
     c_baku_h = next((c for c in df_trans.columns if 'BAKU' in c), None)
     
@@ -293,9 +294,12 @@ try:
             df_sorted = df_valid_trans.sort_values(by=[c_baku_h, 'DATE_TEMP'], ascending=[True, False])
             # Ambil baris pertama (terbaru) untuk tiap barang
             df_latest = df_sorted.drop_duplicates(subset=[c_baku_h])
-            # Simpan ke Kamus Harga
+            # Simpan ke Kamus Harga beserta Tanggalnya!
             for _, row in df_latest.iterrows():
-                latest_price_map[str(row[c_baku_h]).strip().upper()] = row['PRICE_TEMP']
+                latest_price_map[str(row[c_baku_h]).strip().upper()] = {
+                    'harga': row['PRICE_TEMP'],
+                    'tanggal': str(row[c_tgl_h]).split(' ')[0] # Ambil format tanggal saja
+                }
 
     # 4.3 Mapping AI Lookup
     df_master['AI_LOOKUP'] = df_master['NAMA BAKU'].astype(str).str.upper()
@@ -341,7 +345,7 @@ if not st.session_state['logged_in']:
             Dikhususkan untuk staf Pabrik atau Gudang.
             * **Akses Masuk:** Tidak memerlukan kata sandi. Langsung klik tombol putih *"Masuk Sebagai Tamu"*.
             * **Fitur Terbuka:** * `Pencarian Barang`: Ketik nama barang/SKU untuk mencari spesifikasi standar pusat.
-                * `E-Catalog`: Melihat foto fisik barang, estimasi harga terakhir, dan download PDF Katalog.
+                * `E-Catalog`: Melihat foto fisik barang, estimasi harga terakhir beserta Tanggal PO-nya, dan download PDF Katalog.
                 * `Database Vendor`: Mencari nomor telepon dan nama PIC Supplier.
             * *Catatan: Modul Tamu bersifat "Read-Only". Anda tidak dapat menghapus atau merubah data apapun.*
 
@@ -350,7 +354,8 @@ if not st.session_state['logged_in']:
             * **Akses Masuk:** Wajib memasukkan Kata Sandi Rahasia Otoritas.
             * **Fitur Ekstra Terbuka:**
                 * `Pembersihan PO`: Mesin AI untuk menyamakan nama laporan mentah dari plant (RA, PGP, dll) ke dalam bahasa standar Holding.
-                * `Asset Studio`: Fitur Injeksi Gambar. **TIPS CEPAT:** Anda tidak perlu repot klik tombol *upload file*. Cukup salin gambar dari Google (Klik Kanan -> Copy Image), klik kotak abu-abu di aplikasi, dan langsung tekan **Ctrl+V (Paste)**.
+                * `Double Injection`: Simpan ke Sheet 3 & Sheet 4 secara bersamaan.
+                * `Asset Studio`: Fitur Injeksi Gambar (Bisa Copy-Paste Ctrl+V langsung dari Google).
                 * `Dashboard Laporan`: Akses *Executive Filter* dan AI Forecasting.
             
             ---
@@ -830,6 +835,7 @@ if menu == "Pembersihan PO":
             if st.button("💾 KONFIRMASI: Simpan ke DASHBOARD & WORKBOOK", type="primary", use_container_width=True):
                 try:
                     with st.spinner("🚀 Menembakkan data ke Sheet 3 & Sheet 4..."):
+                        # Logika Tanggal Rekap Hybrid
                         tz_wib = datetime.timezone(datetime.timedelta(hours=7))
                         waktu_rekap = datetime.datetime.now(tz_wib).strftime("%Y-%m-%d %H:%M:%S") if auto_time else manual_date.strftime("%Y-%m-%d")
                         
@@ -880,6 +886,7 @@ if menu == "Pembersihan PO":
             df_to_export = edited_df[edited_df["❌ BUKAN SCOPE"] == False]
             if not df_to_export.empty:
                 export_data = []
+                # Logika Tgl Rekap untuk Export Excel
                 tz_wib = datetime.timezone(datetime.timedelta(hours=7))
                 waktu_sekarang = datetime.datetime.now(tz_wib)
                 tgl_rekap_export = waktu_sekarang.strftime("%Y-%m-%d %H:%M:%S") if auto_time else manual_date.strftime("%Y-%m-%d")
@@ -929,12 +936,14 @@ elif menu == "Pencarian Barang":
         for m in hasil:
             if m[1] >= 40:
                 baku = lookup_to_baku_map[m[0]]; info = mapping_master_info.get(baku, {})
-                harga_live = latest_price_map.get(str(baku).strip().upper(), 0)
-                res_list.append({"Match": f"{m[1]}%", "Nama Baku": baku, "SKU": info.get('NOMOR SKU', '-'), "Kategori": info.get('KATEGORI', '-'), "Est. Harga Live": format_rupiah(harga_live)})
+                harga_data = latest_price_map.get(str(baku).strip().upper(), {})
+                harga_live = harga_data.get('harga', 0)
+                tgl_live = harga_data.get('tanggal', '-')
+                res_list.append({"Match": f"{m[1]}%", "Nama Baku": baku, "SKU": info.get('NOMOR SKU', '-'), "Kategori": info.get('KATEGORI', '-'), "Est. Harga Live": format_rupiah(harga_live), "Tgl PO Terakhir": tgl_live})
         st.dataframe(pd.DataFrame(res_list), use_container_width=True)
 
 # ==========================================
-# MENU 3: E-CATALOG & STUDIO GAMBAR (V11.0 LIVE PRICING)
+# MENU 3: E-CATALOG & STUDIO GAMBAR (V11.3 ULTRA LIVE PRICING)
 # ==========================================
 elif menu == "E-Catalog & Studio":
     st.markdown("<h2>🖼️ Enterprise Digital Catalog</h2>", unsafe_allow_html=True)
@@ -967,8 +976,10 @@ elif menu == "E-Catalog & Studio":
         else:
             html_content = f"<h2>Katalog Produk PT Panca Budi ({filter_cat})</h2><table border='1' style='border-collapse: collapse; width: 100%;'><tr><th>SKU</th><th>NAMA BARANG</th><th>HARGA TERBARU</th></tr>"
             for _, r in df_show.iterrows():
-                harga_live_print = latest_price_map.get(str(r.get('NAMA BAKU','')).strip().upper(), 0)
-                html_content += f"<tr><td>{r.get('NOMOR SKU', '-')}</td><td>{r.get('NAMA BAKU', '-')}</td><td>{format_rupiah(harga_live_print)}</td></tr>"
+                harga_data = latest_price_map.get(str(r.get('NAMA BAKU','')).strip().upper(), {})
+                harga_live_print = harga_data.get('harga', 0)
+                tgl_live_print = harga_data.get('tanggal', '-')
+                html_content += f"<tr><td>{r.get('NOMOR SKU', '-')}</td><td>{r.get('NAMA BAKU', '-')}</td><td>{format_rupiah(harga_live_print)} <small>({tgl_live_print})</small></td></tr>"
             html_content += "</table><br><p>Dicetak dari Sistem ERP Purchasing</p>"
             
             st.download_button("🖨️ Download Katalog PDF (HTML Print)", data=html_content, file_name=f"Katalog_{datetime.date.today()}.html", mime="text/html")
@@ -988,8 +999,11 @@ elif menu == "E-Catalog & Studio":
             for idx, (_, row) in enumerate(df_page.iterrows()): 
                 with cols[idx % 4]:
                     baku = row['NAMA BAKU']
-                    # AMBIL HARGA TERBARU DARI RADAR (SHEET 3)
-                    harga_live = latest_price_map.get(str(baku).strip().upper(), None)
+                    
+                    # AMBIL HARGA TERBARU DARI RADAR (SHEET 3) BESERTA TANGGAL PO NYA
+                    harga_data = latest_price_map.get(str(baku).strip().upper(), {})
+                    harga_live = harga_data.get('harga', None)
+                    tgl_live = harga_data.get('tanggal', '-')
                     
                     raw_link = str(row.get('LINK GAMBAR', '')).strip()
                     img_url = process_image_url(raw_link) 
@@ -999,7 +1013,7 @@ elif menu == "E-Catalog & Studio":
                     else:
                         img_element = f"<div style='background-color:#F1F5F9; height:160px; border-radius:8px; display:flex; align-items:center; justify-content:center; margin-bottom:12px;'><span style='color:#94A3B8; font-weight:600;'>No Image Asset</span></div>"
                     
-                    harga_display = f"<span style='color:#047857; font-weight:800; font-size:16px;'>{format_rupiah(harga_live)}</span>" if harga_live else "<span style='color:#EF4444; font-size:11px; font-weight:600;'>Belum ada histori harga</span>"
+                    harga_display = f"<span style='color:#047857; font-weight:800; font-size:16px;'>{format_rupiah(harga_live)}</span><br><span style='font-size:9px; color:#64748B;'>Tgl PO Terakhir: {tgl_live}</span>" if harga_live else "<span style='color:#EF4444; font-size:11px; font-weight:600;'>Belum ada histori harga</span>"
                     badge_live = "<span style='background:#ECFDF5; border: 1px solid #A7F3D0; color:#047857; font-size:9px; padding:3px 8px; border-radius:12px; font-weight:700;'>LIVE PRICE</span>" if harga_live else ""
 
                     card_html = f"""
@@ -1008,8 +1022,8 @@ elif menu == "E-Catalog & Studio":
                         <h5 style='margin-top:0px; font-size:14px; font-weight:700; color:#0F172A; line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;'>{baku}</h5>
                         <p style='font-size:11px; color:#64748B; margin:4px 0;'>SKU: {row.get('NOMOR SKU', '-')}</p>
                         <div style='display:flex; justify-content:space-between; align-items:center; margin-top:10px;'>
-                            {harga_display}
-                            {badge_live}
+                            <div>{harga_display}</div>
+                            <div>{badge_live}</div>
                         </div>
                     </div>
                     """
@@ -1158,7 +1172,7 @@ elif menu == "Dashboard Laporan":
     
     try:
         client = get_gspread_client()
-        # NGAMBIL DATA DARI SHEET 3 (DASHBOARD UTAMA) BUKAN SANDBOX
+        # MURNI NGAMBIL DARI SHEET 3 (DASHBOARD UTAMA) BUKAN SANDBOX
         data_dash = client.open_by_key(SHEET_ID).get_worksheet_by_id(int(GID_DASHBOARD)).get_all_values()
         df_v = load_data(GID_VENDOR); df_v.columns = df_v.columns.str.strip().str.upper()
         
@@ -1170,7 +1184,7 @@ elif menu == "Dashboard Laporan":
             c_unit = next((c for c in df_d.columns if 'UNIT' in c or 'GRUP' in c), None)
             c_harga = next((c for c in df_d.columns if 'HARGA' in c), None)
             c_baku = next((c for c in df_d.columns if 'BAKU' in c), None)
-            c_tgl = next((c for c in df_d.columns if 'TANGGAL' in c or 'TGL' in c or 'DATE' in c and 'REKAP' not in c), None)
+            c_tgl = next((c for c in df_d.columns if ('TANGGAL' in c or 'TGL' in c or 'DATE' in c) and 'REKAP' not in c), None)
             
             df_d['H_NUM'] = df_d[c_harga].apply(parse_harga)
             df_d['Q_NUM'] = pd.to_numeric(df_d['QTY'].astype(str).str.replace(r'[^0-9.]', '', regex=True), errors='coerce').fillna(0)
@@ -1495,7 +1509,7 @@ st.markdown("---")
 sync_time = get_sync_time()
 st.markdown(
     f"<p style='text-align: center; color: #94A3B8; font-size: 12px; line-height: 1.5;'>"
-    f"ERP Purchasing System v11.2 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti<br>"
+    f"ERP Purchasing System v11.3 | Proprietary of PT Panca Budi Idaman Tbk | Created with ❤️ for Raihan Subakti<br>"
     f"<span style='color: #10B981; font-weight: 600;'>🟢 Live Database tersinkronisasi pada: {sync_time}</span>"
     f"</p>", 
     unsafe_allow_html=True
