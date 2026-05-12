@@ -2,7 +2,7 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 10.0 (EXECUTIVE EDITION + Integrated UI Guidebook)
+# Versi: 10.1 (EXECUTIVE EDITION + Hybrid Auto-Timestamp Audit Trail)
 # ==============================================================================
 
 import streamlit as st
@@ -213,7 +213,6 @@ if not st.session_state['logged_in']:
     
     col_space1, col_tamu, col_gap, col_admin, col_space2 = st.columns([1.5, 2.5, 0.3, 2.5, 1.5])
     
-    # --- PINTU 1: TAMU / VIEWER ---
     with col_tamu:
         st.markdown("""
             <div style="text-align: center; padding: 20px 15px 15px 15px; background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.02); height: 100%; margin-bottom: 15px;">
@@ -230,7 +229,6 @@ if not st.session_state['logged_in']:
             st.session_state['nama'] = "Tamu Pabrik"
             st.rerun()
 
-    # --- PINTU 2: ADMIN PURCHASING ---
     with col_admin:
         st.markdown("""
             <div style="text-align: center; padding: 20px 15px 15px 15px; background-color: #F0FDF4; border: 1px solid #A7F3D0; border-radius: 16px; box-shadow: 0 4px 6px rgba(4,120,87,0.05); height: 100%; margin-bottom: 15px;">
@@ -781,11 +779,32 @@ if menu == "Pembersihan PO":
             disabled=["UNIT", "PO", "TANGGAL", "VENDOR", "ITEM_ASLI", "QTY", "HARGA"] 
         )
         
+        # --- FITUR V10.1: AUDIT TRAIL HYBRID (TANGGAL REKAP) ---
+        st.markdown("<hr style='margin-top: 10px; margin-bottom: 20px;'>", unsafe_allow_html=True)
+        st.markdown("<h4 style='color:#0F172A; font-size:16px; margin-bottom:10px;'>🕒 Setup Tanggal Rekap (Audit Trail)</h4>", unsafe_allow_html=True)
+        st.markdown("<p style='color:#64748B; font-size:12px; margin-top:-5px;'>Tentukan tanggal rekap data ini untuk melacak kapan data dimasukkan ke sistem pusat.</p>", unsafe_allow_html=True)
+        
+        auto_time = st.checkbox("✅ Catat Waktu Rekap Secara Otomatis (Live Timestamp)", value=True, help="Jika dicentang, sistem akan menggunakan hari dan jam saat Anda menekan tombol Simpan.")
+        manual_date = None
+        if not auto_time:
+            manual_date = st.date_input("📅 Set Tanggal Rekap Manual (Backdate):")
+            
+        st.markdown("<br>", unsafe_allow_html=True)
+        
         c1, c2 = st.columns(2)
         with c1:
             if st.button("💾 KONFIRMASI: Simpan ke Dashboard Induk", type="primary", use_container_width=True):
                 try:
                     with st.spinner("Tembak data ke Google Sheets..."):
+                        # Logika Tanggal Rekap Hybrid
+                        tz_wib = datetime.timezone(datetime.timedelta(hours=7))
+                        waktu_sekarang = datetime.datetime.now(tz_wib)
+                        
+                        if auto_time:
+                            tgl_rekap_final = waktu_sekarang.strftime("%Y-%m-%d %H:%M:%S")
+                        else:
+                            tgl_rekap_final = manual_date.strftime("%Y-%m-%d")
+                            
                         df_to_save = edited_df[edited_df["❌ BUKAN SCOPE"] == False]
                         client = get_gspread_client()
                         sheet = client.open_by_key(SHEET_ID).get_worksheet_by_id(int(GID_DASHBOARD))
@@ -800,11 +819,13 @@ if menu == "Pembersihan PO":
                                 kat_final = str(r.get('KATEGORI', '-')).strip().upper()
                                 det_kat_final = str(r.get('DETAIL KATEGORI', '-')).strip().upper()
                             
+                            # Menambahkan tgl_rekap_final sebagai Kolom Ke-14 (Kolom N)
                             data_to_push.append([
                                 r['UNIT'], r['PO'], r['TANGGAL'], r['VENDOR'], "RP", 
                                 r['ITEM_ASLI'], r['NAMA_BAKU'], r['QTY'], 
                                 info.get('SATUAN', '-'), r['HARGA'], 
-                                kat_final, det_kat_final, r['SKU']
+                                kat_final, det_kat_final, r['SKU'],
+                                tgl_rekap_final 
                             ])
                         
                         if data_to_push:
@@ -822,6 +843,11 @@ if menu == "Pembersihan PO":
             df_to_export = edited_df[edited_df["❌ BUKAN SCOPE"] == False]
             if not df_to_export.empty:
                 export_data = []
+                # Logika Tgl Rekap untuk Export Excel
+                tz_wib = datetime.timezone(datetime.timedelta(hours=7))
+                waktu_sekarang = datetime.datetime.now(tz_wib)
+                tgl_rekap_export = waktu_sekarang.strftime("%Y-%m-%d %H:%M:%S") if auto_time else manual_date.strftime("%Y-%m-%d")
+
                 for _, r in df_to_export.iterrows():
                     info = mapping_master.get(r['NAMA_BAKU'], {})
                     if r['NAMA_BAKU'] != "⚠️ BARANG BARU":
@@ -835,7 +861,8 @@ if menu == "Pembersihan PO":
                         'UNIT KERJA': r['UNIT'], 'NOMOR PO': r['PO'], 'TANGGAL': r['TANGGAL'], 'NAMA VENDOR': r['VENDOR'], 
                         'MATA UANG': "RP", 'NAMA ITEM ASLI (KOTOR)': r['ITEM_ASLI'], 'NAMA BARANG (BAKU)': r['NAMA_BAKU'], 
                         'QTY': r['QTY'], 'UOM': info.get('SATUAN', '-'), 'HARGA SATUAN': r['HARGA'], 
-                        'KATEGORI': kat_final, 'DETAIL KATEGORI': det_kat_final, 'SKU': r['SKU']
+                        'KATEGORI': kat_final, 'DETAIL KATEGORI': det_kat_final, 'SKU': r['SKU'],
+                        'TANGGAL REKAP': tgl_rekap_export
                     })
                 
                 df_final_export = pd.DataFrame(export_data).fillna("-")
@@ -1421,7 +1448,7 @@ st.markdown("---")
 sync_time = get_sync_time()
 st.markdown(
     f"<p style='text-align: center; color: #94A3B8; font-size: 12px; line-height: 1.5;'>"
-    f"ERP Purchasing System v10.0 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti<br>"
+    f"ERP Purchasing System v10.1 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti<br>"
     f"<span style='color: #10B981; font-weight: 600;'>🟢 Live Database tersinkronisasi pada: {sync_time}</span>"
     f"</p>", 
     unsafe_allow_html=True
