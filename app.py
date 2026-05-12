@@ -2,7 +2,7 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 9.7 (EXECUTIVE EDITION + Compact Luxury Login UI)
+# Versi: 9.9 (EXECUTIVE EDITION + Real-Time Sync Timestamp Footer)
 # ==============================================================================
 
 import streamlit as st
@@ -37,7 +37,11 @@ st.markdown("""
     
     .main { background-color: #F8FAFC; }
     
-    /* --- FITUR STEALTH: MENGHILANGKAN MENU BAWAAN STREAMLIT --- */
+    /* --- FITUR STEALTH & MENGHILANGKAN BLANK SPACE ATAS (ANTI-SCROLL) --- */
+    .block-container {
+        padding-top: 2rem !important;
+        padding-bottom: 1rem !important;
+    }
     [data-testid="stHeader"] { visibility: hidden !important; height: 0px !important; }
     footer { visibility: hidden !important; }
     .stDeployButton { display: none !important; }
@@ -64,12 +68,12 @@ st.markdown("""
         border-radius: 4px 4px 0px 0px; gap: 1px; padding-top: 10px; padding-bottom: 10px;
     }
     
-    /* COMPACT LUXURY BUTTONS (UKURAN DIPERBAIKI) */
+    /* COMPACT LUXURY BUTTONS */
     div[data-testid="stButton"] button {
         border-radius: 10px !important;
         font-weight: 700 !important;
         letter-spacing: 0.5px !important;
-        padding: 12px 0 !important; /* LEBIH RAMPING */
+        padding: 12px 0 !important; 
         transition: all 0.3s ease !important;
     }
     div[data-testid="stButton"] button[kind="primary"] {
@@ -99,7 +103,7 @@ st.markdown("""
     div[data-testid="stTextInput"] input {
         border-radius: 10px !important;
         border: 2px solid #E2E8F0 !important;
-        padding: 12px !important; /* LEBIH RAMPING */
+        padding: 12px !important; 
         font-size: 14px !important;
         text-align: center !important;
         letter-spacing: 2px !important;
@@ -128,7 +132,7 @@ GID_MASTER = "0"
 GID_VENDOR = "168217676"  
 GID_DASHBOARD = "1722600044" 
 
-# PASSWORD ADMIN SANGAT RAHASIA (BISA BOSKU GANTI DI SINI)
+# PASSWORD ADMIN SANGAT RAHASIA
 PASSWORD_ADMIN = "12345"
 
 def get_gspread_client():
@@ -142,6 +146,14 @@ def load_data(gid):
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={gid}"
     return pd.read_csv(url)
 
+@st.cache_data(ttl=120)
+def get_sync_time():
+    # Menangkap waktu sinkronisasi dengan zona waktu WIB (UTC+7)
+    tz_wib = datetime.timezone(datetime.timedelta(hours=7))
+    now = datetime.datetime.now(tz_wib)
+    bulan = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
+    return f"{now.day} {bulan[now.month]} {now.year}, {now.strftime('%H:%M')} WIB"
+
 # ==========================================
 # 3. SISTEM KEAMANAN LUXURY (2 PINTU LOGIN)
 # ==========================================
@@ -149,16 +161,14 @@ if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
 
 if not st.session_state['logged_in']:
-    # JUDUL LEBIH COMPACT
     st.markdown("""
-        <div style="text-align: center; margin-top: 5vh; margin-bottom: 4vh;">
+        <div style="text-align: center; margin-top: 1vh; margin-bottom: 3vh;">
             <div style="display: inline-block; background: #ECFDF5; color: #047857; padding: 4px 12px; border-radius: 20px; font-size: 10px; font-weight: 800; letter-spacing: 1.5px; margin-bottom: 12px;">SECURE LOGIN PORTAL</div>
             <h1 style="color: #064E3B; font-weight: 800; font-size: 36px; letter-spacing: -1px; margin: 0;">PANCA BUDI</h1>
             <p style="color: #64748B; font-weight: 700; letter-spacing: 3px; font-size: 11px; text-transform: uppercase; margin-top: 5px;">Enterprise Procurement System</p>
         </div>
     """, unsafe_allow_html=True)
     
-    # KOLOM DIDORONG KE TENGAH AGAR TIDAK LEBAR
     col_space1, col_tamu, col_gap, col_admin, col_space2 = st.columns([1.5, 2.5, 0.3, 2.5, 1.5])
     
     # --- PINTU 1: TAMU / VIEWER ---
@@ -330,6 +340,10 @@ with st.sidebar:
         </div>
         """, unsafe_allow_html=True)
     
+    if st.button("🔄 Sync Database", use_container_width=True):
+        st.cache_data.clear() # Ini akan mereset data dan juga mengupdate jam sync!
+        st.rerun()
+        
     st.markdown(f"""
         <div style='background-color:#F1F5F9; padding:10px; border-radius:8px; margin-bottom:15px; text-align:center;'>
             <p style='margin:0; font-size:12px; color:#64748B;'>Login sebagai:</p>
@@ -1359,12 +1373,14 @@ elif menu == "Maintenance Data":
     else: st.success("✔️ Database Sehat. Semua SKU terverifikasi.")
 
 # ==============================================================================
-# H. FOOTER SISTEM
+# H. FOOTER SISTEM (OPSI 4 - LIVE TIMESTAMP)
 # ==============================================================================
 st.markdown("---")
+sync_time = get_sync_time()
 st.markdown(
-    "<p style='text-align: center; color: #94A3B8; font-size: 12px;'>"
-    "ERP Purchasing System v9.7 | Proprietary of PT Panca Budi Idaman Tbk | Created with  for Raihan Subakti"
-    "</p>", 
+    f"<p style='text-align: center; color: #94A3B8; font-size: 12px; line-height: 1.5;'>"
+    f"ERP Purchasing System v9.9 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti<br>"
+    f"<span style='color: #10B981; font-weight: 600;'>🟢 Live Database tersinkronisasi pada: {sync_time}</span>"
+    f"</p>", 
     unsafe_allow_html=True
 )
