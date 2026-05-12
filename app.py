@@ -2,7 +2,7 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 9.9 (EXECUTIVE EDITION + Real-Time Sync Timestamp Footer)
+# Versi: 10.0 (EXECUTIVE EDITION + Integrated UI Guidebook)
 # ==============================================================================
 
 import streamlit as st
@@ -119,6 +119,18 @@ st.markdown("""
         background: transparent !important;
         padding: 0 !important;
     }
+
+    /* KUSTOMISASI EXPANDER GUIDE BOOK */
+    div[data-testid="stExpander"] {
+        border-radius: 12px !important;
+        border: 1px solid #E2E8F0 !important;
+        background-color: #FFFFFF !important;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.02) !important;
+    }
+    div[data-testid="stExpander"] summary {
+        color: #047857 !important;
+        font-weight: 700 !important;
+    }
     
     h1, h2, h3 { color: #0F172A; font-weight: 700; }
     </style>
@@ -148,7 +160,6 @@ def load_data(gid):
 
 @st.cache_data(ttl=120)
 def get_sync_time():
-    # Menangkap waktu sinkronisasi dengan zona waktu WIB (UTC+7)
     tz_wib = datetime.timezone(datetime.timedelta(hours=7))
     now = datetime.datetime.now(tz_wib)
     bulan = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
@@ -162,12 +173,43 @@ if 'logged_in' not in st.session_state:
 
 if not st.session_state['logged_in']:
     st.markdown("""
-        <div style="text-align: center; margin-top: 1vh; margin-bottom: 3vh;">
+        <div style="text-align: center; margin-top: 1vh; margin-bottom: 2vh;">
             <div style="display: inline-block; background: #ECFDF5; color: #047857; padding: 4px 12px; border-radius: 20px; font-size: 10px; font-weight: 800; letter-spacing: 1.5px; margin-bottom: 12px;">SECURE LOGIN PORTAL</div>
             <h1 style="color: #064E3B; font-weight: 800; font-size: 36px; letter-spacing: -1px; margin: 0;">PANCA BUDI</h1>
             <p style="color: #64748B; font-weight: 700; letter-spacing: 3px; font-size: 11px; text-transform: uppercase; margin-top: 5px;">Enterprise Procurement System</p>
         </div>
     """, unsafe_allow_html=True)
+    
+    # --- OPSI 1: EXPANDER GUIDE BOOK DI TENGAH ---
+    _, col_guide, _ = st.columns([1.5, 5.3, 1.5])
+    with col_guide:
+        with st.expander("📖 PANDUAN PENGGUNAAN SISTEM (Klik untuk membaca)"):
+            st.markdown("""
+            **Selamat datang di ERP Purchasing PT Panca Budi Idaman Tbk!**
+            Sistem ini dirancang untuk mempermudah operasional *Supply Chain*, pencarian spesifikasi barang, dan standardisasi data antar seluruh pabrik.
+
+            ---
+            **🚪 1. PINTU TAMU (Guest Access)**
+            Dikhususkan untuk staf Pabrik atau Gudang.
+            * **Akses Masuk:** Tidak memerlukan kata sandi. Langsung klik tombol putih *"Masuk Sebagai Tamu"*.
+            * **Fitur Terbuka:** * `Pencarian Barang`: Ketik nama barang/SKU untuk mencari spesifikasi standar pusat.
+                * `E-Catalog`: Melihat foto fisik barang, estimasi harga terakhir, dan download PDF Katalog.
+                * `Database Vendor`: Mencari nomor telepon dan nama PIC Supplier.
+            * *Catatan: Modul Tamu bersifat "Read-Only". Anda tidak dapat menghapus atau merubah data apapun.*
+
+            **👑 2. PINTU ADMIN (Admin Portal)**
+            Dikhususkan untuk tim Holding Purchasing Pusat.
+            * **Akses Masuk:** Wajib memasukkan Kata Sandi Rahasia Otoritas.
+            * **Fitur Ekstra Terbuka:**
+                * `Pembersihan PO`: Mesin AI untuk menyamakan nama laporan mentah dari plant (RA, PGP, Tangerang, dll) ke dalam bahasa standar Holding.
+                * `Asset Studio`: Fitur Injeksi Gambar. **TIPS CEPAT:** Anda tidak perlu repot klik tombol *upload file*. Cukup salin gambar dari Google (Klik Kanan -> Copy Image), klik kotak abu-abu di aplikasi, dan langsung tekan **Ctrl+V (Paste)**.
+                * `Dashboard Laporan`: Akses *Executive Filter* dan AI Forecasting.
+            
+            ---
+            *Bila Anda mengalami kendala teknis, silakan hubungi Tim Purchasing Holding Pusat.*
+            """)
+    
+    st.markdown("<div style='margin-bottom: 2.5vh;'></div>", unsafe_allow_html=True)
     
     col_space1, col_tamu, col_gap, col_admin, col_space2 = st.columns([1.5, 2.5, 0.3, 2.5, 1.5])
     
@@ -341,7 +383,7 @@ with st.sidebar:
         """, unsafe_allow_html=True)
     
     if st.button("🔄 Sync Database", use_container_width=True):
-        st.cache_data.clear() # Ini akan mereset data dan juga mengupdate jam sync!
+        st.cache_data.clear()
         st.rerun()
         
     st.markdown(f"""
@@ -1373,13 +1415,13 @@ elif menu == "Maintenance Data":
     else: st.success("✔️ Database Sehat. Semua SKU terverifikasi.")
 
 # ==============================================================================
-# H. FOOTER SISTEM (OPSI 4 - LIVE TIMESTAMP)
+# H. FOOTER SISTEM (LIVE TIMESTAMP)
 # ==============================================================================
 st.markdown("---")
 sync_time = get_sync_time()
 st.markdown(
     f"<p style='text-align: center; color: #94A3B8; font-size: 12px; line-height: 1.5;'>"
-    f"ERP Purchasing System v9.9 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti<br>"
+    f"ERP Purchasing System v10.0 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti<br>"
     f"<span style='color: #10B981; font-weight: 600;'>🟢 Live Database tersinkronisasi pada: {sync_time}</span>"
     f"</p>", 
     unsafe_allow_html=True
