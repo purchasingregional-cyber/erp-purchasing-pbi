@@ -2,7 +2,8 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 11.0 (FULL VERSION - Dynamic Pricing + Smart Audit Trail)
+# Versi: 11.2 (ULTIMATE FULL VERSION - 1400+ Lines)
+# Fitur: Dynamic Pricing, Double Injection (Sheet 3 & 4), Full Dashboard, Full Extractor
 # ==============================================================================
 
 import streamlit as st
@@ -140,11 +141,11 @@ st.markdown("""
 # 2. SISTEM KONEKSI GOOGLE SHEETS
 # ==========================================
 SHEET_ID = "1EJnbmhufaKfKEQmAmkQFYvJZ9_Kx_vJ7C1HvcyzK4WQ"
-GID_MASTER = "0"          
-GID_VENDOR = "168217676"  
-GID_DASHBOARD = "1693047728" 
+GID_MASTER = "0"              # Sheet 1: Master Data
+GID_VENDOR = "168217676"      # Sheet 2: Database Vendor
+GID_DASHBOARD = "1693047728"  # Sheet 3: Dashboard Laporan (Target Utama)
+GID_SANDBOX = "1722600044"    # Sheet 4: Lembar Kerja/Sandbox (Target Kedua)
 
-# PASSWORD ADMIN SANGAT RAHASIA
 PASSWORD_ADMIN = "12345"
 
 def get_gspread_client():
@@ -348,7 +349,7 @@ if not st.session_state['logged_in']:
             Dikhususkan untuk tim Holding Purchasing Pusat.
             * **Akses Masuk:** Wajib memasukkan Kata Sandi Rahasia Otoritas.
             * **Fitur Ekstra Terbuka:**
-                * `Pembersihan PO`: Mesin AI untuk menyamakan nama laporan mentah dari plant (RA, PGP, Tangerang, dll) ke dalam bahasa standar Holding.
+                * `Pembersihan PO`: Mesin AI untuk menyamakan nama laporan mentah dari plant (RA, PGP, dll) ke dalam bahasa standar Holding.
                 * `Asset Studio`: Fitur Injeksi Gambar. **TIPS CEPAT:** Anda tidak perlu repot klik tombol *upload file*. Cukup salin gambar dari Google (Klik Kanan -> Copy Image), klik kotak abu-abu di aplikasi, dan langsung tekan **Ctrl+V (Paste)**.
                 * `Dashboard Laporan`: Akses *Executive Filter* dan AI Forecasting.
             
@@ -826,21 +827,19 @@ if menu == "Pembersihan PO":
         
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("💾 KONFIRMASI: Simpan ke Dashboard Induk", type="primary", use_container_width=True):
+            if st.button("💾 KONFIRMASI: Simpan ke DASHBOARD & WORKBOOK", type="primary", use_container_width=True):
                 try:
-                    with st.spinner("Tembak data ke Google Sheets..."):
-                        # Logika Tanggal Rekap Hybrid
+                    with st.spinner("🚀 Menembakkan data ke Sheet 3 & Sheet 4..."):
                         tz_wib = datetime.timezone(datetime.timedelta(hours=7))
-                        waktu_sekarang = datetime.datetime.now(tz_wib)
+                        waktu_rekap = datetime.datetime.now(tz_wib).strftime("%Y-%m-%d %H:%M:%S") if auto_time else manual_date.strftime("%Y-%m-%d")
                         
-                        if auto_time:
-                            tgl_rekap_final = waktu_sekarang.strftime("%Y-%m-%d %H:%M:%S")
-                        else:
-                            tgl_rekap_final = manual_date.strftime("%Y-%m-%d")
-                            
                         df_to_save = edited_df[edited_df["❌ BUKAN SCOPE"] == False]
                         client = get_gspread_client()
-                        sheet = client.open_by_key(SHEET_ID).get_worksheet_by_id(int(GID_DASHBOARD))
+                        
+                        # TARGET 1: Sheet 3 (Dashboard Utama - GID_DASHBOARD)
+                        sheet_dash = client.open_by_key(SHEET_ID).get_worksheet_by_id(int(GID_DASHBOARD))
+                        # TARGET 2: Sheet 4 (Workbook Sandbox - GID_SANDBOX)
+                        sheet_sandbox = client.open_by_key(SHEET_ID).get_worksheet_by_id(int(GID_SANDBOX))
                         
                         data_to_push = []
                         for _, r in df_to_save.iterrows():
@@ -858,12 +857,17 @@ if menu == "Pembersihan PO":
                                 r['ITEM_ASLI'], r['NAMA_BAKU'], r['QTY'], 
                                 info.get('SATUAN', '-'), r['HARGA'], 
                                 kat_final, det_kat_final, r['SKU'],
-                                tgl_rekap_final 
+                                waktu_rekap 
                             ])
                         
                         if data_to_push:
-                            sheet.append_rows(pd.DataFrame(data_to_push).fillna("-").values.tolist())
-                            st.balloons(); st.success(f"🔥 {len(data_to_push)} Data bersih berhasil masuk ke Dashboard!"); del st.session_state['holding_draft']; time.sleep(2); st.rerun()
+                            # EKSEKUSI DOUBLE INJECTION
+                            sheet_dash.append_rows(pd.DataFrame(data_to_push).fillna("-").values.tolist())
+                            sheet_sandbox.append_rows(pd.DataFrame(data_to_push).fillna("-").values.tolist())
+                            
+                            st.balloons()
+                            st.success(f"🔥 BERHASIL! {len(data_to_push)} Data terduplikasi aman di Sheet 3 & Sheet 4."); 
+                            del st.session_state['holding_draft']; time.sleep(2); st.rerun()
                         else:
                             st.warning("Tidak ada data yang disimpan (semua dicentang sebagai bukan scope).")
                             
@@ -876,7 +880,6 @@ if menu == "Pembersihan PO":
             df_to_export = edited_df[edited_df["❌ BUKAN SCOPE"] == False]
             if not df_to_export.empty:
                 export_data = []
-                # Logika Tgl Rekap untuk Export Excel
                 tz_wib = datetime.timezone(datetime.timedelta(hours=7))
                 waktu_sekarang = datetime.datetime.now(tz_wib)
                 tgl_rekap_export = waktu_sekarang.strftime("%Y-%m-%d %H:%M:%S") if auto_time else manual_date.strftime("%Y-%m-%d")
@@ -1155,6 +1158,7 @@ elif menu == "Dashboard Laporan":
     
     try:
         client = get_gspread_client()
+        # NGAMBIL DATA DARI SHEET 3 (DASHBOARD UTAMA) BUKAN SANDBOX
         data_dash = client.open_by_key(SHEET_ID).get_worksheet_by_id(int(GID_DASHBOARD)).get_all_values()
         df_v = load_data(GID_VENDOR); df_v.columns = df_v.columns.str.strip().str.upper()
         
@@ -1276,7 +1280,7 @@ elif menu == "Dashboard Laporan":
 
                             if len(barang_pilih) == 1:
                                 item_tunggal = barang_pilih[0]
-                                info_master = df_master[df_master['NAMA BAKU'] == item_tunggal].tail(1)
+                                info_master = df_master_clean[df_master_clean['NAMA BAKU'] == item_tunggal].tail(1)
                                 kat_item = "NAN"
                                 if not info_master.empty: kat_item = str(info_master.iloc[0].get('KATEGORI', '')).upper()
 
@@ -1395,8 +1399,8 @@ elif menu == "Maintenance Data":
     st.markdown("<h2>🛠️ System Config & SKU Generator</h2>", unsafe_allow_html=True)
     st.markdown("<p style='color:#64748B;'>Modul untuk injeksi SKU secara masif dan perawatan data.</p>", unsafe_allow_html=True)
     
-    invalid_mask = df_master.drop_duplicates(subset=['NAMA BAKU'], keep='last')['NOMOR SKU'].isna() | (df_master.drop_duplicates(subset=['NAMA BAKU'], keep='last')['NOMOR SKU'].astype(str).str.strip().str.len() < 10)
-    df_missing = df_master.drop_duplicates(subset=['NAMA BAKU'], keep='last')[invalid_mask]
+    invalid_mask = df_master_clean['NOMOR SKU'].isna() | (df_master_clean['NOMOR SKU'].astype(str).str.strip().str.len() < 10)
+    df_missing = df_master_clean[invalid_mask]
     
     if not df_missing.empty:
         st.warning(f"⚠️ Terdeteksi {len(df_missing)} item yang membutuhkan Nomor SKU.")
@@ -1491,7 +1495,7 @@ st.markdown("---")
 sync_time = get_sync_time()
 st.markdown(
     f"<p style='text-align: center; color: #94A3B8; font-size: 12px; line-height: 1.5;'>"
-    f"ERP Purchasing System v11.0 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti<br>"
+    f"ERP Purchasing System v11.2 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti<br>"
     f"<span style='color: #10B981; font-weight: 600;'>🟢 Live Database tersinkronisasi pada: {sync_time}</span>"
     f"</p>", 
     unsafe_allow_html=True
