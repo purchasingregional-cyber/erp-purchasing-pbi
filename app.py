@@ -2,8 +2,8 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 11.5 (ULTIMATE FULL VERSION - Universal Visibility / Anti-Dark Mode)
-# Fitur: Dynamic Pricing w/ Date, Double Injection, Full Dashboard, Full Extractor
+# Versi: 11.6 (ULTIMATE FULL VERSION - Smart Extractor & Unlocked Editor)
+# Fitur: Unlocked Data Editor, Smart Vendor Detection, Dynamic Pricing, Double Injection
 # ==============================================================================
 
 import streamlit as st
@@ -34,6 +34,7 @@ st.markdown("""
     
     html, body, [class*="css"] {
         font-family: 'Plus Jakarta Sans', sans-serif;
+        color: #0F172A !important; 
     }
     
     /* --- 🛡️ ARMOR ANTI-DARK MODE (FORCE LIGHT UI DI SEMUA DEVICE) --- */
@@ -294,7 +295,6 @@ def col_num_to_letter(n):
 # 4. LOAD CORE DATA & DYNAMIC PRICING LOGIC
 # ==========================================
 try:
-    # 4.1 Load Master Data (Sheet 1)
     df_master = load_data(GID_MASTER)
     df_master.columns = df_master.columns.str.strip().str.upper()
     df_master = df_master.dropna(subset=['NAMA BAKU'])
@@ -302,36 +302,28 @@ try:
     if 'KATEGORI' in df_master.columns: df_master['KATEGORI'] = df_master['KATEGORI'].ffill().astype(str).str.strip().str.upper()
     if 'DETAIL KATEGORI' in df_master.columns: df_master['DETAIL KATEGORI'] = df_master['DETAIL KATEGORI'].ffill().astype(str).str.strip().str.upper()
     
-    # 4.2 Load Histori Transaksi (Sheet 3) - UNTUK HARGA TERBARU (LIVE PRICING)
     df_trans = load_data(GID_DASHBOARD)
     df_trans.columns = df_trans.columns.str.strip().str.upper()
     
-    # PERBAIKAN FATAL: Memastikan robot HANYA mengambil kolom Tanggal PO (Bukan Tanggal Rekap)
     c_tgl_h = next((c for c in df_trans.columns if ('TANGGAL' in c or 'TGL' in c or 'DATE' in c) and 'REKAP' not in c), None)
     c_harga_h = next((c for c in df_trans.columns if 'HARGA' in c), None)
     c_baku_h = next((c for c in df_trans.columns if 'BAKU' in c), None)
     
     latest_price_map = {}
     if c_tgl_h and c_harga_h and c_baku_h:
-        # Konversi ke datetime yang aman
         df_trans['DATE_TEMP'] = pd.to_datetime(df_trans[c_tgl_h], errors='coerce')
-        # Buat kolom harga numerik
         df_trans['PRICE_TEMP'] = df_trans[c_harga_h].apply(parse_harga)
         df_valid_trans = df_trans.dropna(subset=['DATE_TEMP', 'PRICE_TEMP', c_baku_h])
         
         if not df_valid_trans.empty:
-            # Sortir: Barang yang sama, Tanggal paling baru di atas
             df_sorted = df_valid_trans.sort_values(by=[c_baku_h, 'DATE_TEMP'], ascending=[True, False])
-            # Ambil baris pertama (terbaru) untuk tiap barang
             df_latest = df_sorted.drop_duplicates(subset=[c_baku_h])
-            # Simpan ke Kamus Harga beserta Tanggalnya!
             for _, row in df_latest.iterrows():
                 latest_price_map[str(row[c_baku_h]).strip().upper()] = {
                     'harga': row['PRICE_TEMP'],
-                    'tanggal': str(row[c_tgl_h]).split(' ')[0] # Ambil format tanggal saja
+                    'tanggal': str(row[c_tgl_h]).split(' ')[0] 
                 }
 
-    # 4.3 Mapping AI Lookup
     df_master['AI_LOOKUP'] = df_master['NAMA BAKU'].astype(str).str.upper()
     if 'NAMA ITEM' in df_master.columns: 
         df_master['AI_LOOKUP'] += " " + df_master['NAMA ITEM'].fillna("").astype(str).str.upper()
@@ -339,7 +331,6 @@ try:
     search_list = df_master['AI_LOOKUP'].tolist()
     lookup_to_baku_map = dict(zip(df_master['AI_LOOKUP'], df_master['NAMA BAKU']))
     
-    # Mapping Master Info (Unique NAMA BAKU untuk E-Catalog)
     df_master_clean = df_master.drop_duplicates(subset=['NAMA BAKU'], keep='last').copy()
     mapping_master_info = df_master_clean.set_index('NAMA BAKU').to_dict('index')
 
@@ -362,7 +353,6 @@ if not st.session_state['logged_in']:
         </div>
     """, unsafe_allow_html=True)
     
-    # --- EXPANDER GUIDE BOOK DI TENGAH ---
     _, col_guide, _ = st.columns([1.5, 5.3, 1.5])
     with col_guide:
         with st.expander("📖 PANDUAN PENGGUNAAN SISTEM (Klik untuk membaca)"):
@@ -584,12 +574,13 @@ if menu == "Pembersihan PO":
                             
                             if any(x in line_text for x in ["SUBTOTAL", "TOTAL :", "LAP.PEMBELIAN", "PAGE"]): continue
                             
+                            # V11.6 FIX: Cukup deteksi tanggal untuk menandakan Header Row
                             date_m = next((v for v in val_list if re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', v)), None)
-                            po_m = next((v for v in val_list if "PB" in v.upper() and len(v) > 5 and re.search(r'\d', v)), None)
+                            po_m = next((v for v in val_list if len(v) >= 4 and re.search(r'\d', v) and not re.match(r'^[-0-9.,]+$', v)), None)
                             
-                            if date_m and po_m:
+                            if date_m:
                                 curr_tgl = date_m.split(" ")[0]
-                                curr_po = po_m
+                                curr_po = po_m if po_m else "-"
                                 potensi_vendor = [v for v in val_list if v != date_m and v != po_m and not re.match(r'^[-0-9.,]+$', v) and "00/01/1900" not in v]
                                 curr_vendor = max(potensi_vendor, key=len).replace("00/01/1900", "").strip() if potensi_vendor else "CASH / TANPA NAMA"
                                 continue
@@ -831,9 +822,10 @@ if menu == "Pembersihan PO":
         except Exception as e: st.error(f"Error Mesin: {e}")
 
     if 'holding_draft' in st.session_state:
-        st.markdown("### ⚠️ TAHAP REVIEW HOLDING")
-        st.info("💡 **INFO:** Centang kotak **❌ BUKAN SCOPE** untuk membuang barang yang bukan wewenang Anda (ATK, dll). Anda juga bisa mengetik `KATEGORI` untuk **⚠️ BARANG BARU**.")
+        st.markdown("### ⚠️ TAHAP REVIEW HOLDING (UNLOCKED)")
+        st.info("💡 **INFO PENTING:** Semua kolom di bawah ini **BISA DIEDIT**. Jika AI salah menebak nama Vendor atau Harga, silakan klik dua kali pada kolom tersebut dan ketik pembenarannya sebelum disimpan!")
         
+        # V11.6 FIX: Disabled dihilangkan agar semua kolom bisa diedit manual (Master Override)
         edited_df = st.data_editor(
             st.session_state['holding_draft'], 
             use_container_width=True, 
@@ -844,11 +836,9 @@ if menu == "Pembersihan PO":
                     help="Centang untuk MEMBUANG barang ini dari laporan",
                     default=False,
                 )
-            },
-            disabled=["UNIT", "PO", "TANGGAL", "VENDOR", "ITEM_ASLI", "QTY", "HARGA"] 
+            }
         )
         
-        # --- FITUR V10.1: AUDIT TRAIL HYBRID (TANGGAL REKAP) ---
         st.markdown("<hr style='margin-top: 10px; margin-bottom: 20px;'>", unsafe_allow_html=True)
         st.markdown("<h4 style='color:#0F172A; font-size:16px; margin-bottom:10px;'>🕒 Setup Tanggal Rekap (Audit Trail)</h4>", unsafe_allow_html=True)
         st.markdown("<p style='color:#64748B; font-size:12px; margin-top:-5px;'>Tentukan tanggal rekap data ini untuk melacak kapan data dimasukkan ke sistem pusat.</p>", unsafe_allow_html=True)
@@ -865,16 +855,13 @@ if menu == "Pembersihan PO":
             if st.button("💾 KONFIRMASI: Simpan ke DASHBOARD & WORKBOOK", type="primary", use_container_width=True):
                 try:
                     with st.spinner("🚀 Menembakkan data ke Sheet 3 & Sheet 4..."):
-                        # Logika Tanggal Rekap Hybrid
                         tz_wib = datetime.timezone(datetime.timedelta(hours=7))
                         waktu_rekap = datetime.datetime.now(tz_wib).strftime("%Y-%m-%d %H:%M:%S") if auto_time else manual_date.strftime("%Y-%m-%d")
                         
                         df_to_save = edited_df[edited_df["❌ BUKAN SCOPE"] == False]
                         client = get_gspread_client()
                         
-                        # TARGET 1: Sheet 3 (Dashboard Utama - GID_DASHBOARD)
                         sheet_dash = client.open_by_key(SHEET_ID).get_worksheet_by_id(int(GID_DASHBOARD))
-                        # TARGET 2: Sheet 4 (Workbook Sandbox - GID_SANDBOX)
                         sheet_sandbox = client.open_by_key(SHEET_ID).get_worksheet_by_id(int(GID_SANDBOX))
                         
                         data_to_push = []
@@ -887,7 +874,6 @@ if menu == "Pembersihan PO":
                                 kat_final = str(r.get('KATEGORI', '-')).strip().upper()
                                 det_kat_final = str(r.get('DETAIL KATEGORI', '-')).strip().upper()
                             
-                            # Menambahkan tgl_rekap_final sebagai Kolom Ke-14 (Kolom N)
                             data_to_push.append([
                                 r['UNIT'], r['PO'], r['TANGGAL'], r['VENDOR'], "RP", 
                                 r['ITEM_ASLI'], r['NAMA_BAKU'], r['QTY'], 
@@ -897,7 +883,6 @@ if menu == "Pembersihan PO":
                             ])
                         
                         if data_to_push:
-                            # EKSEKUSI DOUBLE INJECTION
                             sheet_dash.append_rows(pd.DataFrame(data_to_push).fillna("-").values.tolist())
                             sheet_sandbox.append_rows(pd.DataFrame(data_to_push).fillna("-").values.tolist())
                             
@@ -916,7 +901,6 @@ if menu == "Pembersihan PO":
             df_to_export = edited_df[edited_df["❌ BUKAN SCOPE"] == False]
             if not df_to_export.empty:
                 export_data = []
-                # Logika Tgl Rekap untuk Export Excel
                 tz_wib = datetime.timezone(datetime.timedelta(hours=7))
                 waktu_sekarang = datetime.datetime.now(tz_wib)
                 tgl_rekap_export = waktu_sekarang.strftime("%Y-%m-%d %H:%M:%S") if auto_time else manual_date.strftime("%Y-%m-%d")
@@ -973,7 +957,7 @@ elif menu == "Pencarian Barang":
         st.dataframe(pd.DataFrame(res_list), use_container_width=True)
 
 # ==========================================
-# MENU 3: E-CATALOG & STUDIO GAMBAR (V11.3 ULTRA LIVE PRICING)
+# MENU 3: E-CATALOG & STUDIO GAMBAR
 # ==========================================
 elif menu == "E-Catalog & Studio":
     st.markdown("<h2>🖼️ Enterprise Digital Catalog</h2>", unsafe_allow_html=True)
@@ -1030,7 +1014,6 @@ elif menu == "E-Catalog & Studio":
                 with cols[idx % 4]:
                     baku = row['NAMA BAKU']
                     
-                    # AMBIL HARGA TERBARU DARI RADAR (SHEET 3) BESERTA TANGGAL PO NYA
                     harga_data = latest_price_map.get(str(baku).strip().upper(), {})
                     harga_live = harga_data.get('harga', None)
                     tgl_live = harga_data.get('tanggal', '-')
@@ -1202,7 +1185,6 @@ elif menu == "Dashboard Laporan":
     
     try:
         client = get_gspread_client()
-        # MURNI NGAMBIL DARI SHEET 3 (DASHBOARD UTAMA) BUKAN SANDBOX
         data_dash = client.open_by_key(SHEET_ID).get_worksheet_by_id(int(GID_DASHBOARD)).get_all_values()
         df_v = load_data(GID_VENDOR); df_v.columns = df_v.columns.str.strip().str.upper()
         
@@ -1539,7 +1521,7 @@ st.markdown("---")
 sync_time = get_sync_time()
 st.markdown(
     f"<p style='text-align: center; color: #94A3B8; font-size: 12px; line-height: 1.5;'>"
-    f"ERP Purchasing System v11.5 | Proprietary of PT Panca Budi Idaman Tbk | Created with ❤️ for Raihan Subakti<br>"
+    f"ERP Purchasing System v11.6 | Proprietary of PT Panca Budi Idaman Tbk | Created with ❤️ for Raihan Subakti<br>"
     f"<span style='color: #10B981; font-weight: 600;'>🟢 Live Database tersinkronisasi pada: {sync_time}</span>"
     f"</p>", 
     unsafe_allow_html=True
