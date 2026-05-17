@@ -2,8 +2,8 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 11.3 (ULTRA LIVE PRICING - Tampil Tanggal PO Terakhir)
-# Fitur: Dynamic Pricing w/ Date, Double Injection (Sheet 3 & 4), Full Dashboard, Full Extractor
+# Versi: 11.5 (ULTIMATE FULL VERSION - Universal Visibility / Anti-Dark Mode)
+# Fitur: Dynamic Pricing w/ Date, Double Injection, Full Dashboard, Full Extractor
 # ==============================================================================
 
 import streamlit as st
@@ -36,14 +36,49 @@ st.markdown("""
         font-family: 'Plus Jakarta Sans', sans-serif;
     }
     
-    .main { background-color: #F8FAFC; }
+    /* --- 🛡️ ARMOR ANTI-DARK MODE (FORCE LIGHT UI DI SEMUA DEVICE) --- */
+    .stApp, .main, [data-testid="stAppViewContainer"] {
+        background-color: #F8FAFC !important;
+    }
+    [data-testid="stSidebar"] {
+        background-color: #FFFFFF !important;
+    }
     
-    /* --- FITUR STEALTH & MENGHILANGKAN BLANK SPACE ATAS (ANTI-SCROLL) --- */
+    /* Paksa Semua Teks Standar Menjadi Gelap */
+    [data-testid="stMarkdownContainer"] > p, [data-testid="stText"], label, .stSelectbox label {
+        color: #334155 !important;
+    }
+    h1, h2, h3, h4, h5, h6 { 
+        color: #0F172A !important; 
+    }
+    
+    /* Paksa Input Box & Dropdown Menjadi Terang dengan Teks Gelap */
+    div[data-testid="stTextInput"] input, div[data-baseweb="select"] > div, div[data-baseweb="base-input"] {
+        background-color: #FFFFFF !important;
+        color: #0F172A !important;
+    }
+    
+    /* Paksa Pilihan Dropdown agar tulisannya tidak hilang */
+    ul[data-baseweb="menu"] {
+        background-color: #FFFFFF !important;
+    }
+    ul[data-baseweb="menu"] li {
+        color: #0F172A !important;
+    }
+    
+    /* Paksa Teks di Expander Guide Book */
+    div[data-testid="stExpander"] summary p {
+        color: #047857 !important;
+        font-weight: 700 !important;
+    }
+    
+    /* --- FITUR STEALTH & MENGHILANGKAN BLANK SPACE BAWAH --- */
     .block-container {
         padding-top: 2rem !important;
         padding-bottom: 1rem !important;
     }
-    [data-testid="stHeader"] { visibility: hidden !important; height: 0px !important; }
+    
+    /* Header TIDAK disembunyikan agar tombol panah HP tetap terlihat */
     footer { visibility: hidden !important; }
     .stDeployButton { display: none !important; }
     #MainMenu { visibility: hidden !important; }
@@ -87,6 +122,9 @@ st.markdown("""
         transform: translateY(-2px) !important;
         box-shadow: 0 8px 15px rgba(4, 120, 87, 0.3) !important;
     }
+    div[data-testid="stButton"] button[kind="primary"] p {
+        color: #FFFFFF !important; /* Pastikan teks tombol utama tetap putih */
+    }
     div[data-testid="stButton"] button[kind="secondary"] {
         background-color: #FFFFFF !important;
         color: #334155 !important;
@@ -109,7 +147,6 @@ st.markdown("""
         text-align: center !important;
         letter-spacing: 2px !important;
         transition: all 0.3s ease !important;
-        background-color: #FFFFFF !important;
     }
     div[data-testid="stTextInput"] input:focus {
         border-color: #047857 !important;
@@ -121,19 +158,12 @@ st.markdown("""
         padding: 0 !important;
     }
 
-    /* KUSTOMISASI EXPANDER GUIDE BOOK */
     div[data-testid="stExpander"] {
         border-radius: 12px !important;
         border: 1px solid #E2E8F0 !important;
         background-color: #FFFFFF !important;
         box-shadow: 0 2px 4px rgba(0,0,0,0.02) !important;
     }
-    div[data-testid="stExpander"] summary {
-        color: #047857 !important;
-        font-weight: 700 !important;
-    }
-    
-    h1, h2, h3 { color: #0F172A; font-weight: 700; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -1509,7 +1539,7 @@ st.markdown("---")
 sync_time = get_sync_time()
 st.markdown(
     f"<p style='text-align: center; color: #94A3B8; font-size: 12px; line-height: 1.5;'>"
-    f"ERP Purchasing System v11.3 | Proprietary of PT Panca Budi Idaman Tbk | Created with ❤️ for Raihan Subakti<br>"
+    f"ERP Purchasing System v11.5 | Proprietary of PT Panca Budi Idaman Tbk | Created with ❤️ for Raihan Subakti<br>"
     f"<span style='color: #10B981; font-weight: 600;'>🟢 Live Database tersinkronisasi pada: {sync_time}</span>"
     f"</p>", 
     unsafe_allow_html=True
