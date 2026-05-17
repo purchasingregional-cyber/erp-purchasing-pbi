@@ -2,8 +2,8 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 11.6 (ULTIMATE FULL VERSION - Smart Extractor & Unlocked Editor)
-# Fitur: Unlocked Data Editor, Smart Vendor Detection, Dynamic Pricing, Double Injection
+# Versi: 11.6 (ULTIMATE FULL VERSION - Anti-Ghosting Chart / Force Light Mode)
+# Fitur: Dynamic Pricing, Double Injection, Full Dashboard, Full Extractor
 # ==============================================================================
 
 import streamlit as st
@@ -34,7 +34,6 @@ st.markdown("""
     
     html, body, [class*="css"] {
         font-family: 'Plus Jakarta Sans', sans-serif;
-        color: #0F172A !important; 
     }
     
     /* --- 🛡️ ARMOR ANTI-DARK MODE (FORCE LIGHT UI DI SEMUA DEVICE) --- */
@@ -295,6 +294,7 @@ def col_num_to_letter(n):
 # 4. LOAD CORE DATA & DYNAMIC PRICING LOGIC
 # ==========================================
 try:
+    # 4.1 Load Master Data (Sheet 1)
     df_master = load_data(GID_MASTER)
     df_master.columns = df_master.columns.str.strip().str.upper()
     df_master = df_master.dropna(subset=['NAMA BAKU'])
@@ -302,6 +302,7 @@ try:
     if 'KATEGORI' in df_master.columns: df_master['KATEGORI'] = df_master['KATEGORI'].ffill().astype(str).str.strip().str.upper()
     if 'DETAIL KATEGORI' in df_master.columns: df_master['DETAIL KATEGORI'] = df_master['DETAIL KATEGORI'].ffill().astype(str).str.strip().str.upper()
     
+    # 4.2 Load Histori Transaksi (Sheet 3) - UNTUK HARGA TERBARU (LIVE PRICING)
     df_trans = load_data(GID_DASHBOARD)
     df_trans.columns = df_trans.columns.str.strip().str.upper()
     
@@ -311,19 +312,25 @@ try:
     
     latest_price_map = {}
     if c_tgl_h and c_harga_h and c_baku_h:
+        # Konversi ke datetime yang aman
         df_trans['DATE_TEMP'] = pd.to_datetime(df_trans[c_tgl_h], errors='coerce')
+        # Buat kolom harga numerik
         df_trans['PRICE_TEMP'] = df_trans[c_harga_h].apply(parse_harga)
         df_valid_trans = df_trans.dropna(subset=['DATE_TEMP', 'PRICE_TEMP', c_baku_h])
         
         if not df_valid_trans.empty:
+            # Sortir: Barang yang sama, Tanggal paling baru di atas
             df_sorted = df_valid_trans.sort_values(by=[c_baku_h, 'DATE_TEMP'], ascending=[True, False])
+            # Ambil baris pertama (terbaru) untuk tiap barang
             df_latest = df_sorted.drop_duplicates(subset=[c_baku_h])
+            # Simpan ke Kamus Harga beserta Tanggalnya!
             for _, row in df_latest.iterrows():
                 latest_price_map[str(row[c_baku_h]).strip().upper()] = {
                     'harga': row['PRICE_TEMP'],
-                    'tanggal': str(row[c_tgl_h]).split(' ')[0] 
+                    'tanggal': str(row[c_tgl_h]).split(' ')[0] # Ambil format tanggal saja
                 }
 
+    # 4.3 Mapping AI Lookup
     df_master['AI_LOOKUP'] = df_master['NAMA BAKU'].astype(str).str.upper()
     if 'NAMA ITEM' in df_master.columns: 
         df_master['AI_LOOKUP'] += " " + df_master['NAMA ITEM'].fillna("").astype(str).str.upper()
@@ -331,6 +338,7 @@ try:
     search_list = df_master['AI_LOOKUP'].tolist()
     lookup_to_baku_map = dict(zip(df_master['AI_LOOKUP'], df_master['NAMA BAKU']))
     
+    # Mapping Master Info (Unique NAMA BAKU untuk E-Catalog)
     df_master_clean = df_master.drop_duplicates(subset=['NAMA BAKU'], keep='last').copy()
     mapping_master_info = df_master_clean.set_index('NAMA BAKU').to_dict('index')
 
@@ -353,6 +361,7 @@ if not st.session_state['logged_in']:
         </div>
     """, unsafe_allow_html=True)
     
+    # --- EXPANDER GUIDE BOOK DI TENGAH ---
     _, col_guide, _ = st.columns([1.5, 5.3, 1.5])
     with col_guide:
         with st.expander("📖 PANDUAN PENGGUNAAN SISTEM (Klik untuk membaca)"):
@@ -574,7 +583,7 @@ if menu == "Pembersihan PO":
                             
                             if any(x in line_text for x in ["SUBTOTAL", "TOTAL :", "LAP.PEMBELIAN", "PAGE"]): continue
                             
-                            # V11.6 FIX: Cukup deteksi tanggal untuk menandakan Header Row
+                            # V11.6 FIX: Cukup deteksi tanggal untuk menandakan Header Row (Lebih Longgar)
                             date_m = next((v for v in val_list if re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', v)), None)
                             po_m = next((v for v in val_list if len(v) >= 4 and re.search(r'\d', v) and not re.match(r'^[-0-9.,]+$', v)), None)
                             
@@ -1281,8 +1290,9 @@ elif menu == "Dashboard Laporan":
                                 rekap_u = rekap_u[rekap_u[c_unit].str.strip() != ""] 
                                 fig_pie = px.pie(rekap_u, names=c_unit, values='TOTAL', hole=0.6, color_discrete_sequence=['#047857', '#10B981', '#34D399', '#6EE7B7'])
                                 fig_pie.update_traces(textposition='inside', textinfo='percent')
-                                fig_pie.update_layout(margin=dict(t=0, b=0, l=0, r=0), showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5))
-                                st.plotly_chart(fig_pie, use_container_width=True)
+                                # V11.6 FIX: Tambah font color dark dan ubah background jadi transparan
+                                fig_pie.update_layout(font=dict(color='#0F172A'), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(t=0, b=0, l=0, r=0), showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5))
+                                st.plotly_chart(fig_pie, use_container_width=True, theme=None)
                             else: st.info(f"Viewing specialized data for **{filter_unit}**.")
 
                         with c_b:
@@ -1294,8 +1304,9 @@ elif menu == "Dashboard Laporan":
                                 top_i.columns = ['Nama Barang', 'Jumlah PO']
                                 top_i = top_i.sort_values(by='Jumlah PO', ascending=False).head(8)
                                 fig_bar = px.bar(top_i, x='Jumlah PO', y='Nama Barang', orientation='h', text='Jumlah PO', color_discrete_sequence=['#047857'])
-                                fig_bar.update_layout(yaxis={'categoryorder':'total ascending'}, margin=dict(t=0, b=0, l=0, r=0), xaxis_title=None, yaxis_title=None, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
-                                st.plotly_chart(fig_bar, use_container_width=True)
+                                # V11.6 FIX: Tambah font color dark
+                                fig_bar.update_layout(font=dict(color='#0F172A'), yaxis={'categoryorder':'total ascending'}, margin=dict(t=0, b=0, l=0, r=0), xaxis_title=None, yaxis_title=None, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
+                                st.plotly_chart(fig_bar, use_container_width=True, theme=None)
                     
                     with tab_item:
                         list_barang_histori = df_filtered.drop_duplicates(subset=[c_baku]).sort_values(by=c_baku)[c_baku].tolist()
@@ -1347,13 +1358,15 @@ elif menu == "Dashboard Laporan":
                                     g_harga, g_qty = st.columns(2)
                                     with g_harga:
                                         fig_harga = px.line(df_item_histori, x='DATE_CLEAN', y='H_NUM', title="Price Volatility Trend", markers=True, color_discrete_sequence=['#F59E0B'])
-                                        fig_harga.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', xaxis_title="", yaxis_title="Price (IDR)")
-                                        st.plotly_chart(fig_harga, use_container_width=True)
+                                        # V11.6 FIX: Tambah font color dark
+                                        fig_harga.update_layout(font=dict(color='#0F172A'), plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', xaxis_title="", yaxis_title="Price (IDR)")
+                                        st.plotly_chart(fig_harga, use_container_width=True, theme=None)
                                     with g_qty:
                                         df_monthly = df_item_histori.groupby(pd.Grouper(key='DATE_CLEAN', freq='ME'))['Q_NUM'].sum().reset_index()
                                         fig_qty = px.bar(df_monthly, x='DATE_CLEAN', y='Q_NUM', title="Procurement Volume by Month", color_discrete_sequence=['#3B82F6'])
-                                        fig_qty.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', xaxis_title="", yaxis_title="Quantity")
-                                        st.plotly_chart(fig_qty, use_container_width=True)
+                                        # V11.6 FIX: Tambah font color dark
+                                        fig_qty.update_layout(font=dict(color='#0F172A'), plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', xaxis_title="", yaxis_title="Quantity")
+                                        st.plotly_chart(fig_qty, use_container_width=True, theme=None)
                                     
                                     st.markdown("<hr style='border:1px solid #E2E8F0; margin: 30px 0;'>", unsafe_allow_html=True)
                                     st.markdown("<h3 style='color:#0F172A;'>🔮 AI Forecasting & Budget Projection</h3>", unsafe_allow_html=True)
@@ -1401,13 +1414,15 @@ elif menu == "Dashboard Laporan":
                                     g_harga, g_qty = st.columns(2)
                                     with g_harga:
                                         fig_harga = px.line(df_item_histori, x='DATE_CLEAN', y='H_NUM', color=c_baku, title="Price Volatility Comparison", markers=True)
-                                        fig_harga.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', xaxis_title="", yaxis_title="Price (IDR)", legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5, title=""))
-                                        st.plotly_chart(fig_harga, use_container_width=True)
+                                        # V11.6 FIX: Tambah font color dark
+                                        fig_harga.update_layout(font=dict(color='#0F172A'), plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', xaxis_title="", yaxis_title="Price (IDR)", legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5, title=""))
+                                        st.plotly_chart(fig_harga, use_container_width=True, theme=None)
                                     with g_qty:
                                         df_monthly = df_item_histori.groupby([pd.Grouper(key='DATE_CLEAN', freq='ME'), c_baku])['Q_NUM'].sum().reset_index()
                                         fig_qty = px.bar(df_monthly, x='DATE_CLEAN', y='Q_NUM', color=c_baku, barmode='group', title="Volume Comparison by Month")
-                                        fig_qty.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', xaxis_title="", yaxis_title="Quantity", legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5, title=""))
-                                        st.plotly_chart(fig_qty, use_container_width=True)
+                                        # V11.6 FIX: Tambah font color dark
+                                        fig_qty.update_layout(font=dict(color='#0F172A'), plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', xaxis_title="", yaxis_title="Quantity", legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5, title=""))
+                                        st.plotly_chart(fig_qty, use_container_width=True, theme=None)
                                     
                                     st.markdown("<h4 style='font-size:16px; color:#334155; margin-bottom:10px;'>Combined Transaction Ledger</h4>", unsafe_allow_html=True)
                                     df_table = df_item_histori[[c_tgl, c_po, c_baku, c_unit, 'VENDOR', 'QTY', 'H_NUM', 'TOTAL']].copy()
