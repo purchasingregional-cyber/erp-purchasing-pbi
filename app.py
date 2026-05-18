@@ -2,8 +2,8 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 12.7 (ULTIMATE FULL VERSION - PIHS Solo Format Conqueror)
-# Fitur: Fix PIHS Month & PO String, Split PO & FPB, Smart Hybrid Filter, Anti-Dark Mode
+# Versi: 12.8 (ULTIMATE FULL VERSION - Unlocked Maintenance Editor)
+# Fitur: Editable Category in Maintenance, Split PO & FPB, True Date Sorting
 # ==============================================================================
 
 import streamlit as st
@@ -599,7 +599,7 @@ if menu == "Pembersihan PO":
                 col_nama = col_qty = col_harga = col_vendor = col_po_asli = col_fpb = col_tgl = col_ppn = col_ket = -1
                 start_idx = 0
                 global_date = "-"
-                current_solo_month = "" # V12.7 FIX: Penampung bulan khusus Solo
+                current_solo_month = ""
 
                 if format_type == "RA_OLD":
                     curr_po, curr_tgl, curr_vendor = "", "-", "-"
@@ -627,7 +627,7 @@ if menu == "Pembersihan PO":
                             if date_m:
                                 curr_tgl = date_m.split(" ")[0]
                                 curr_po = po_m if po_m else "" 
-                                curr_po = re.sub(r'^[\s:]+', '', curr_po) # CLEAN PO
+                                curr_po = re.sub(r'^[\s:]+', '', curr_po) 
                                 potensi_vendor = [v for v in val_list if v != date_m and v != po_m and not re.match(r'^[-0-9.,]+$', v) and "00/01/1900" not in v]
                                 curr_vendor = max(potensi_vendor, key=len).replace("00/01/1900", "").strip() if potensi_vendor else "CASH / TANPA NAMA"
                                 continue
@@ -659,7 +659,7 @@ if menu == "Pembersihan PO":
                         if "INCLUDE" in line_text or "EXCLUDE" in line_text:
                             curr_po = val_list[0] if len(val_list) > 0 else ""
                             if curr_po.upper() in ["INCLUDE", "EXCLUDE"]: curr_po = "" 
-                            curr_po = re.sub(r'^[\s:]+', '', curr_po) # CLEAN PO
+                            curr_po = re.sub(r'^[\s:]+', '', curr_po) 
                             
                             for c in val_list: 
                                 m = re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', c)
@@ -746,7 +746,6 @@ if menu == "Pembersihan PO":
                             
                             line_text = " | ".join(val_list).upper()
                             
-                            # --- V12.7 FIX: SOLO MONTH TRACKER ---
                             if detected_plant == "SOLO":
                                 for v in val_list:
                                     v_up = str(v).strip().upper()
@@ -771,7 +770,7 @@ if menu == "Pembersihan PO":
                                 
                                 po_str = str(row.values[col_po_asli]).strip() if col_po_asli != -1 else ""
                                 po_val = po_str if po_str.lower() not in ['nan', 'none', '-', ''] else ""
-                                po_val = re.sub(r'^[\s:]+', '', po_val) # --- V12.7 FIX: CLEAN PO DARI TITIK DUA ---
+                                po_val = re.sub(r'^[\s:]+', '', po_val) 
 
                                 fpb_str = str(row.values[col_fpb]).strip() if col_fpb != -1 else ""
                                 fpb_val = fpb_str if fpb_str.lower() not in ['nan', 'none', '-', ''] else ""
@@ -790,7 +789,6 @@ if menu == "Pembersihan PO":
                                         m = re.search(r'\d{1,2}-[a-zA-Z]{3}-?\d{0,4}|\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', v)
                                         if m: tgl_val = m.group(0); break
                                 
-                                # --- V12.7 FIX: INJEKSI TANGGAL PRIORITAS SOLO ---
                                 if detected_plant == "SOLO" and current_solo_month != "":
                                     year_m = re.search(r'\b(20\d{2})\b', global_date)
                                     y_str = year_m.group(1) if year_m else "2026"
@@ -826,7 +824,7 @@ if menu == "Pembersihan PO":
 
                         if "INCLUDE" in line or "EXCLUDE" in line:
                             curr_po = val_list[0] if len(val_list)>0 else ""
-                            curr_po = re.sub(r'^[\s:]+', '', curr_po) # CLEAN PO
+                            curr_po = re.sub(r'^[\s:]+', '', curr_po) 
                             for c in val_list: 
                                 m = re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', c)
                                 if m: curr_tgl = m.group(0); break
@@ -1561,11 +1559,11 @@ elif menu == "Maintenance Data":
                     st.error(f"Error: {e}")
 
         if 'preview_sku_list' in st.session_state:
-            st.info("💡 **Silakan review dan edit manual di kolom 'SKU BARU' pada tabel di bawah ini jika diperlukan.**")
+            st.info("💡 **Silakan edit manual 'KATEGORI', 'DETAIL KATEGORI', atau 'SKU BARU' langsung di tabel ini sebelum disimpan ke Master Data.**")
             
             edited_preview = st.data_editor(
                 st.session_state['preview_sku_list'],
-                disabled=["Baris Excel", "NAMA BAKU", "KATEGORI", "DETAIL KATEGORI"],
+                disabled=["Baris Excel", "NAMA BAKU"],
                 use_container_width=True,
                 hide_index=True
             )
@@ -1578,12 +1576,18 @@ elif menu == "Maintenance Data":
                             df_full = st.session_state['draft_sku_df']
                             c_s = next((c for c in df_full.columns if 'SKU' in c), None)
                             c_tgl = next((c for c in df_full.columns if 'TANGGAL' in c or 'TGL' in c or 'DATE' in c), None)
+                            c_k = next((c for c in df_full.columns if 'KATEGORI' in c and 'DETAIL' not in c), None)
+                            c_d = next((c for c in df_full.columns if 'DETAIL' in c), None)
                             
                             for _, row in edited_preview.iterrows():
                                 excel_idx = row["Baris Excel"] - 2
-                                df_full.at[excel_idx, c_s] = row["SKU BARU"]
+                                if c_s: df_full.at[excel_idx, c_s] = row["SKU BARU"]
                                 if c_tgl and "TANGGAL" in row:
                                     df_full.at[excel_idx, c_tgl] = row["TANGGAL"]
+                                if c_k and "KATEGORI" in row:
+                                    df_full.at[excel_idx, c_k] = row["KATEGORI"]
+                                if c_d and "DETAIL KATEGORI" in row:
+                                    df_full.at[excel_idx, c_d] = row["DETAIL KATEGORI"]
                                 
                             client = get_gspread_client()
                             sheet_master = client.open_by_key(SHEET_ID).get_worksheet(0)
@@ -1612,7 +1616,7 @@ st.markdown("---")
 sync_time = get_sync_time()
 st.markdown(
     f"<p style='text-align: center; color: #94A3B8; font-size: 12px; line-height: 1.5;'>"
-    f"ERP Purchasing System v12.7 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti<br>"
+    f"ERP Purchasing System v12.8 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti<br>"
     f"<span style='color: #10B981; font-weight: 600;'>🟢 Live Database tersinkronisasi pada: {sync_time}</span>"
     f"</p>", 
     unsafe_allow_html=True
