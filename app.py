@@ -2,8 +2,8 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 11.9 (ULTIMATE FULL VERSION - Indonesian Currency Parser Fix)
-# Fitur: Fix Format Harga Pemalang, Blank PO Filter, Force Light Mode, Double Injection
+# Versi: 12.0 (ULTIMATE FULL VERSION - PPN Status Injection)
+# Fitur: Fix PPN, Fix Harga Pemalang, Blank PO Filter, Anti-Dark Mode, Double Injection
 # ==============================================================================
 
 import streamlit as st
@@ -376,7 +376,6 @@ if not st.session_state['logged_in']:
         </div>
     """, unsafe_allow_html=True)
     
-    # --- EXPANDER GUIDE BOOK DI TENGAH ---
     _, col_guide, _ = st.columns([1.5, 5.3, 1.5])
     with col_guide:
         with st.expander("📖 PANDUAN PENGGUNAAN SISTEM (Klik untuk membaca)"):
@@ -619,7 +618,7 @@ if menu == "Pembersihan PO":
                                     if qty_val is not None and prc_val is not None:
                                         extracted_rows.append({
                                             "UNIT KERJA": detected_plant, "NO PO": curr_po, "TANGGAL": curr_tgl, "VENDOR": curr_vendor,
-                                            "MATA UANG": "RP", "ITEM_KOTOR": item_name, "QTY": qty_val, "HARGA": prc_val
+                                            "MATA UANG": "RP", "ITEM_KOTOR": item_name, "QTY": qty_val, "HARGA": prc_val, "STATUS_PPN": "NON PPN"
                                         })
 
                 elif format_type == "OLD":
@@ -677,11 +676,11 @@ if menu == "Pembersihan PO":
                                 
                                 extracted_rows.append({
                                     "UNIT KERJA": detected_plant, "NO PO": curr_po, "TANGGAL": curr_tgl, "VENDOR": curr_vendor,
-                                    "MATA UANG": curr_money, "ITEM_KOTOR": item_name, "QTY": qty_val, "HARGA": prc_val
+                                    "MATA UANG": curr_money, "ITEM_KOTOR": item_name, "QTY": qty_val, "HARGA": prc_val, "STATUS_PPN": "NON PPN"
                                 })
 
                 elif format_type == "NEW":
-                    col_nama = col_qty = col_harga = col_vendor = col_po_asli = col_tgl = -1
+                    col_nama = col_qty = col_harga = col_vendor = col_po_asli = col_tgl = col_ppn = -1
                     start_idx = 0
                     global_date = "-"
                     
@@ -709,11 +708,14 @@ if menu == "Pembersihan PO":
                                     col_po_asli = i
                                 elif ('PENYELESAIAN' in x_clean or 'TGL EMAIL' in x_clean or 'DATANG' in x_clean) and col_tgl == -1: 
                                     col_tgl = i
+                                # V12.0 PPN FIX: Deteksi Sensor PPN
+                                elif ('PPN' in x_clean) and col_ppn == -1:
+                                    col_ppn = i
                         
                         if col_nama != -1 and col_harga != -1:
-                            master_cols_new = (col_nama, col_qty, col_harga, col_vendor, col_po_asli, col_tgl)
+                            master_cols_new = (col_nama, col_qty, col_harga, col_vendor, col_po_asli, col_tgl, col_ppn)
                     else:
-                        col_nama, col_qty, col_harga, col_vendor, col_po_asli, col_tgl = master_cols_new
+                        col_nama, col_qty, col_harga, col_vendor, col_po_asli, col_tgl, col_ppn = master_cols_new
                         start_idx = -1
                                 
                     if col_nama != -1 and col_harga != -1:
@@ -762,10 +764,14 @@ if menu == "Pembersihan PO":
                                     year_fpb = "20" + m_fpb.group(1)
                                     month_fpb = m_fpb.group(2)
                                     tgl_val = f"{year_fpb}-{month_fpb}-01"
+                                
+                                # V12.0 PPN FIX: Tangkap nilai PPN
+                                ppn_val = str(row.values[col_ppn]).strip().upper() if col_ppn != -1 else "NON PPN"
+                                if ppn_val in ['NAN', 'NONE', '-', '']: ppn_val = "NON PPN"
                                             
                                 extracted_rows.append({
                                     "UNIT KERJA": detected_plant, "NO PO": po_val, "TANGGAL": tgl_val, "VENDOR": vendor_val,
-                                    "MATA UANG": "RP", "ITEM_KOTOR": item_name, "QTY": qty_val, "HARGA": prc_val
+                                    "MATA UANG": "RP", "ITEM_KOTOR": item_name, "QTY": qty_val, "HARGA": prc_val, "STATUS_PPN": ppn_val
                                 })
                             except Exception: pass
 
@@ -810,7 +816,7 @@ if menu == "Pembersihan PO":
                                     item_name = max(names, key=len) if names else "Unknown"
                                     extracted_rows.append({
                                         "UNIT KERJA": "PUSAT", "NO PO": curr_po, "TANGGAL": curr_tgl, "VENDOR": curr_vendor,
-                                        "MATA UANG": curr_money, "ITEM_KOTOR": item_name, "QTY": nums[0], "HARGA": nums[-1]
+                                        "MATA UANG": curr_money, "ITEM_KOTOR": item_name, "QTY": nums[0], "HARGA": nums[-1], "STATUS_PPN": "NON PPN"
                                     })
 
             if extracted_rows:
@@ -827,7 +833,7 @@ if menu == "Pembersihan PO":
                             "NAMA_BAKU": baku, "SKU": info.get('NOMOR SKU', '-'), 
                             "KATEGORI": info.get('KATEGORI', '-'),
                             "DETAIL KATEGORI": info.get('DETAIL KATEGORI', '-'),
-                            "QTY": r['QTY'], "HARGA": r['HARGA']
+                            "QTY": r['QTY'], "HARGA": r['HARGA'], "STATUS PPN": r['STATUS_PPN']
                         })
                     else:
                         final_draft.append({
@@ -837,10 +843,12 @@ if menu == "Pembersihan PO":
                             "NAMA_BAKU": "⚠️ BARANG BARU", "SKU": "-", 
                             "KATEGORI": "", 
                             "DETAIL KATEGORI": "", 
-                            "QTY": r['QTY'], "HARGA": r['HARGA']
+                            "QTY": r['QTY'], "HARGA": r['HARGA'], "STATUS PPN": r['STATUS_PPN']
                         })
                 
-                st.session_state['holding_draft'] = pd.DataFrame(final_draft)
+                # REORDER COLUMNS untuk tampilan tabel (Biar PPN ada di sebelah HARGA)
+                cols_order = ["❌ BUKAN SCOPE", "UNIT", "PO", "TANGGAL", "VENDOR", "ITEM_ASLI", "NAMA_BAKU", "QTY", "HARGA", "STATUS PPN", "KATEGORI", "DETAIL KATEGORI", "SKU"]
+                st.session_state['holding_draft'] = pd.DataFrame(final_draft)[cols_order]
                 st.rerun()
             else:
                 st.warning("⚠️ Data item kosong! Pastikan file Excel sesuai format pabrik yang Anda pilih.")
@@ -860,6 +868,11 @@ if menu == "Pembersihan PO":
                     "❌ BUKAN SCOPE",
                     help="Centang untuk MEMBUANG barang ini dari laporan",
                     default=False,
+                ),
+                "STATUS PPN": st.column_config.SelectboxColumn(
+                    "STATUS PPN",
+                    options=["PPN", "NON PPN"],
+                    required=True
                 )
             }
         )
@@ -902,10 +915,12 @@ if menu == "Pembersihan PO":
                                 kat_final = str(r.get('KATEGORI', '-')).strip().upper()
                                 det_kat_final = str(r.get('DETAIL KATEGORI', '-')).strip().upper()
                             
+                            # V12.0 PPN FIX: Menambahkan STATUS PPN tepat di Kolom K (Setelah HARGA)
                             data_to_push.append([
                                 r['UNIT'], r['PO'], r['TANGGAL'], r['VENDOR'], "RP", 
                                 r['ITEM_ASLI'], r['NAMA_BAKU'], r['QTY'], 
                                 info.get('SATUAN', '-'), r['HARGA'], 
+                                r['STATUS PPN'], # <--- INI KOLOM K BARU
                                 kat_final, det_kat_final, r['SKU'],
                                 waktu_rekap 
                             ])
@@ -951,6 +966,7 @@ if menu == "Pembersihan PO":
                         'UNIT KERJA': r['UNIT'], 'NOMOR PO': r['PO'], 'TANGGAL': r['TANGGAL'], 'NAMA VENDOR': r['VENDOR'], 
                         'MATA UANG': "RP", 'NAMA ITEM ASLI (KOTOR)': r['ITEM_ASLI'], 'NAMA BARANG (BAKU)': r['NAMA_BAKU'], 
                         'QTY': r['QTY'], 'UOM': info.get('SATUAN', '-'), 'HARGA SATUAN': r['HARGA'], 
+                        'STATUS PPN': r['STATUS PPN'],
                         'KATEGORI': kat_final, 'DETAIL KATEGORI': det_kat_final, 'SKU': r['SKU'],
                         'TANGGAL REKAP': tgl_rekap_export
                     })
@@ -1554,7 +1570,7 @@ st.markdown("---")
 sync_time = get_sync_time()
 st.markdown(
     f"<p style='text-align: center; color: #94A3B8; font-size: 12px; line-height: 1.5;'>"
-    f"ERP Purchasing System v11.9 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti<br>"
+    f"ERP Purchasing System v12.0 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti<br>"
     f"<span style='color: #10B981; font-weight: 600;'>🟢 Live Database tersinkronisasi pada: {sync_time}</span>"
     f"</p>", 
     unsafe_allow_html=True
