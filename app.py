@@ -2,8 +2,8 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 11.8 (ULTIMATE FULL VERSION - Smart PO Filter & PIHC Override)
-# Fitur: Blank PO Filter, Force Light Mode, Dynamic Pricing, Double Injection
+# Versi: 11.9 (ULTIMATE FULL VERSION - Indonesian Currency Parser Fix)
+# Fitur: Fix Format Harga Pemalang, Blank PO Filter, Force Light Mode, Double Injection
 # ==============================================================================
 
 import streamlit as st
@@ -224,12 +224,36 @@ def parse_numeric(value):
         if pd.isna(value) or str(value).strip() == "": return None
         s = str(value).strip()
         if re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', s): return None
+        
+        # Bersihkan simbol dan spasi
         s_clean = re.sub(r'(?i)rp|idr|\s|\xa0', '', s)
         if not re.match(r'^[-0-9.,]+$', s_clean): return None
+        
+        # --- V11.9 FIX: INDONESIAN CURRENCY PARSER ---
+        # Jika ada titik tapi tidak ada koma (Format Indo: 50.000 atau 1.250.000)
+        if '.' in s_clean and ',' not in s_clean:
+            parts = s_clean.split('.')
+            # Asumsikan titik adalah pemisah ribuan JIKA blok terakhir persis 3 digit
+            if len(parts[-1]) == 3:
+                s_clean = s_clean.replace('.', '')
+        
+        # Jika ada koma dan titik sekaligus (misal 1.000,50 atau 1,000.50)
         if ',' in s_clean and '.' in s_clean:
-            if s_clean.rfind(',') > s_clean.rfind('.'): s_clean = s_clean.replace('.', '').replace(',', '.')
-            else: s_clean = s_clean.replace(',', '')
-        elif ',' in s_clean: s_clean = s_clean.replace(',', '.')
+            if s_clean.rfind(',') > s_clean.rfind('.'): 
+                # Format Indo: 1.000,50 -> 1000.50
+                s_clean = s_clean.replace('.', '').replace(',', '.')
+            else: 
+                # Format US: 1,000.50 -> 1000.50
+                s_clean = s_clean.replace(',', '')
+        # Jika hanya ada koma (misal 50,000 atau 50,5)
+        elif ',' in s_clean:
+            if len(s_clean.split(',')[-1]) == 3: 
+                # Kemungkinan format US tanpa desimal (misal 50,000)
+                s_clean = s_clean.replace(',', '')
+            else: 
+                # Kemungkinan desimal Indonesia (misal 50,5)
+                s_clean = s_clean.replace(',', '.')
+                
         return float(s_clean)
     except: return None
 
@@ -352,6 +376,7 @@ if not st.session_state['logged_in']:
         </div>
     """, unsafe_allow_html=True)
     
+    # --- EXPANDER GUIDE BOOK DI TENGAH ---
     _, col_guide, _ = st.columns([1.5, 5.3, 1.5])
     with col_guide:
         with st.expander("📖 PANDUAN PENGGUNAAN SISTEM (Klik untuk membaca)"):
@@ -573,18 +598,17 @@ if menu == "Pembersihan PO":
                             
                             if any(x in line_text for x in ["SUBTOTAL", "TOTAL :", "LAP.PEMBELIAN", "PAGE"]): continue
                             
-                            # V11.6 FIX: Cukup deteksi tanggal untuk menandakan Header Row
                             date_m = next((v for v in val_list if re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', v)), None)
                             po_m = next((v for v in val_list if len(v) >= 4 and re.search(r'\d', v) and not re.match(r'^[-0-9.,]+$', v)), None)
                             
                             if date_m:
                                 curr_tgl = date_m.split(" ")[0]
-                                curr_po = po_m if po_m else "" # V11.8 FIX: Kosongkan jika tidak ada PO
+                                curr_po = po_m if po_m else "" 
                                 potensi_vendor = [v for v in val_list if v != date_m and v != po_m and not re.match(r'^[-0-9.,]+$', v) and "00/01/1900" not in v]
                                 curr_vendor = max(potensi_vendor, key=len).replace("00/01/1900", "").strip() if potensi_vendor else "CASH / TANPA NAMA"
                                 continue
                                 
-                            if curr_po != "-": # Will process if curr_po is "" or string
+                            if curr_po != "-": 
                                 if col_nama < len(row.values) and col_qty < len(row.values) and col_harga < len(row.values):
                                     item_name = str(row.values[col_nama]).strip()
                                     if item_name.lower() in ['', 'nan', 'none', 'nama barang', 'subtotal', 'subtotal :']: continue
@@ -610,7 +634,7 @@ if menu == "Pembersihan PO":
 
                         if "INCLUDE" in line_text or "EXCLUDE" in line_text:
                             curr_po = val_list[0] if len(val_list) > 0 else ""
-                            if curr_po.upper() in ["INCLUDE", "EXCLUDE"]: curr_po = "" # Jika salah ambil header
+                            if curr_po.upper() in ["INCLUDE", "EXCLUDE"]: curr_po = "" 
                             
                             for c in val_list: 
                                 m = re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', c)
@@ -657,7 +681,6 @@ if menu == "Pembersihan PO":
                                 })
 
                 elif format_type == "NEW":
-                    # V11.8 FIX: HANYA fokus mencari NO PO
                     col_nama = col_qty = col_harga = col_vendor = col_po_asli = col_tgl = -1
                     start_idx = 0
                     global_date = "-"
@@ -682,7 +705,6 @@ if menu == "Pembersihan PO":
                                     col_vendor = i; start_idx = max(start_idx, idx)
                                 elif ('QTY' in x_clean) and col_qty == -1: 
                                     col_qty = i
-                                # V11.8 FIX: Paksa HANYA ambil kolom NO PO ASLI
                                 elif ('NO PO' in x_clean or 'NOMOR PO' in x_clean or 'NO. PO' in x_clean) and 'STATUS' not in x_clean: 
                                     col_po_asli = i
                                 elif ('PENYELESAIAN' in x_clean or 'TGL EMAIL' in x_clean or 'DATANG' in x_clean) and col_tgl == -1: 
@@ -715,7 +737,6 @@ if menu == "Pembersihan PO":
                                 v_str = str(row.values[col_vendor]).strip() if col_vendor != -1 else "-"
                                 vendor_val = v_str if v_str.lower() not in ['nan', 'none', ''] else "CASH / TANPA NAMA"
                                 
-                                # V11.8 FIX: Kosongkan (Blank) jika PO tidak ada. Jangan pakai strip (-)
                                 po_str = str(row.values[col_po_asli]).strip() if col_po_asli != -1 else ""
                                 po_val = po_str if po_str.lower() not in ['nan', 'none', '-', ''] else ""
 
@@ -848,7 +869,6 @@ if menu == "Pembersihan PO":
         auto_time = st.checkbox("✅ Catat Waktu Rekap Secara Otomatis (Live Timestamp)", value=True)
         manual_date = st.date_input("📅 Set Tanggal Rekap Manual (Backdate):") if not auto_time else None
         
-        # V11.8 FIX: CHECKBOX FILTER SMART UPLOAD
         st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
         filter_po_kosong = st.checkbox("✅ HANYA SIMPAN & EXCEL-KAN DATA YANG SUDAH MEMILIKI NOMOR PO (Abaikan PO Kosong)", value=True, help="Jika dicentang, barang yang kolom PO-nya kosong tidak akan dimasukkan ke database.")
             
@@ -864,7 +884,6 @@ if menu == "Pembersihan PO":
                         
                         df_to_save = edited_df[edited_df["❌ BUKAN SCOPE"] == False]
                         
-                        # V11.8 FIX: Logika Eksekusi Smart Filter PO Kosong
                         if filter_po_kosong:
                             df_to_save = df_to_save[df_to_save['PO'].astype(str).str.strip() != ""]
                             df_to_save = df_to_save[df_to_save['PO'].astype(str).str.strip() != "-"]
@@ -909,7 +928,6 @@ if menu == "Pembersihan PO":
         try:
             df_to_export = edited_df[edited_df["❌ BUKAN SCOPE"] == False]
             
-            # V11.8 FIX: Export Excel juga mengikuti Smart Filter
             if filter_po_kosong:
                 df_to_export = df_to_export[df_to_export['PO'].astype(str).str.strip() != ""]
                 df_to_export = df_to_export[df_to_export['PO'].astype(str).str.strip() != "-"]
@@ -1536,7 +1554,7 @@ st.markdown("---")
 sync_time = get_sync_time()
 st.markdown(
     f"<p style='text-align: center; color: #94A3B8; font-size: 12px; line-height: 1.5;'>"
-    f"ERP Purchasing System v11.8 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti<br>"
+    f"ERP Purchasing System v11.9 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti<br>"
     f"<span style='color: #10B981; font-weight: 600;'>🟢 Live Database tersinkronisasi pada: {sync_time}</span>"
     f"</p>", 
     unsafe_allow_html=True
