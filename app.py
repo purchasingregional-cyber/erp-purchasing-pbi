@@ -2,8 +2,8 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 12.0 (ULTIMATE FULL VERSION - PPN Status Injection)
-# Fitur: Fix PPN, Fix Harga Pemalang, Blank PO Filter, Anti-Dark Mode, Double Injection
+# Versi: 12.1 (ULTIMATE FULL VERSION - Auto-Adaptive Sheet Scanner)
+# Fitur: Fix Kolom Geser (April/Mei), Fix PPN, Fix Harga, Blank PO Filter, Double Injection
 # ==============================================================================
 
 import streamlit as st
@@ -546,7 +546,6 @@ if menu == "Pembersihan PO":
                 st.info("🤖 Mesin ERP Pusat membaca seluruh sheet...")
 
             master_format_type = None
-            master_cols_new = None
 
             for sheet_name, df_input in dict_df.items():
                 format_type = ""
@@ -576,9 +575,13 @@ if menu == "Pembersihan PO":
                 else:
                     format_type = master_format_type
 
+                # --- V12.1 FIX: HAPUS MEMORI KOLOM, SCAN ULANG UNTUK SETIAP SHEET ---
+                col_nama = col_qty = col_harga = col_vendor = col_po_asli = col_tgl = col_ppn = -1
+                start_idx = 0
+                global_date = "-"
+
                 if format_type == "RA_OLD":
                     curr_po, curr_tgl, curr_vendor = "", "-", "-"
-                    col_nama, col_qty, col_harga = -1, -1, -1
                     
                     for idx, row in df_input.iterrows():
                         row_upper = [str(c).strip().upper() for c in row.values]
@@ -680,43 +683,33 @@ if menu == "Pembersihan PO":
                                 })
 
                 elif format_type == "NEW":
-                    col_nama = col_qty = col_harga = col_vendor = col_po_asli = col_tgl = col_ppn = -1
-                    start_idx = 0
-                    global_date = "-"
-                    
+                    # MENCARI TANGGAL GLOBAL PER SHEET
                     for idx_g, row_g in df_input.head(15).iterrows():
                         text_g = " ".join([str(c).strip().upper() for c in row_g.values if pd.notna(c)])
                         m_g = re.search(r'\d{1,2}\s+[A-Z]+\s+\d{4}|\d{1,2}-[A-Z]{3}-?\d{0,4}|\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', text_g)
                         if m_g and ("TANGGAL" in text_g or "DATE" in text_g or "TGL" in text_g):
                             global_date = m_g.group(0); break
 
-                    if master_cols_new is None:
-                        for idx, row in df_input.head(30).iterrows():
-                            for i, c in enumerate(row.values):
-                                if pd.isna(c): continue
-                                x_clean = re.sub(r'\s+', ' ', str(c).strip().upper())
-                                
-                                if ('JENIS BARANG' in x_clean or 'NAMA BARANG' in x_clean) and col_nama == -1: 
-                                    col_nama = i; start_idx = max(start_idx, idx)
-                                elif 'HARGA' in x_clean and 'PER' not in x_clean and 'UPDATE' not in x_clean and col_harga == -1: 
-                                    col_harga = i; start_idx = max(start_idx, idx)
-                                elif 'VENDOR' in x_clean and 'PENUNJUKKAN' not in x_clean and col_vendor == -1: 
-                                    col_vendor = i; start_idx = max(start_idx, idx)
-                                elif ('QTY' in x_clean) and col_qty == -1: 
-                                    col_qty = i
-                                elif ('NO PO' in x_clean or 'NOMOR PO' in x_clean or 'NO. PO' in x_clean) and 'STATUS' not in x_clean: 
-                                    col_po_asli = i
-                                elif ('PENYELESAIAN' in x_clean or 'TGL EMAIL' in x_clean or 'DATANG' in x_clean) and col_tgl == -1: 
-                                    col_tgl = i
-                                # V12.0 PPN FIX: Deteksi Sensor PPN
-                                elif ('PPN' in x_clean) and col_ppn == -1:
-                                    col_ppn = i
-                        
-                        if col_nama != -1 and col_harga != -1:
-                            master_cols_new = (col_nama, col_qty, col_harga, col_vendor, col_po_asli, col_tgl, col_ppn)
-                    else:
-                        col_nama, col_qty, col_harga, col_vendor, col_po_asli, col_tgl, col_ppn = master_cols_new
-                        start_idx = -1
+                    # MENCARI POSISI KOLOM (KARENA KOLOM BISA BERGESER PER BULAN)
+                    for idx, row in df_input.head(30).iterrows():
+                        for i, c in enumerate(row.values):
+                            if pd.isna(c): continue
+                            x_clean = re.sub(r'\s+', ' ', str(c).strip().upper())
+                            
+                            if ('JENIS BARANG' in x_clean or 'NAMA BARANG' in x_clean) and col_nama == -1: 
+                                col_nama = i; start_idx = max(start_idx, idx)
+                            elif 'HARGA' in x_clean and 'PER' not in x_clean and 'UPDATE' not in x_clean and col_harga == -1: 
+                                col_harga = i; start_idx = max(start_idx, idx)
+                            elif 'VENDOR' in x_clean and 'PENUNJUKKAN' not in x_clean and col_vendor == -1: 
+                                col_vendor = i; start_idx = max(start_idx, idx)
+                            elif ('QTY' in x_clean) and col_qty == -1: 
+                                col_qty = i
+                            elif ('NO PO' in x_clean or 'NOMOR PO' in x_clean or 'NO. PO' in x_clean) and 'STATUS' not in x_clean: 
+                                col_po_asli = i
+                            elif ('PENYELESAIAN' in x_clean or 'TGL EMAIL' in x_clean or 'DATANG' in x_clean) and col_tgl == -1: 
+                                col_tgl = i
+                            elif ('PPN' in x_clean) and col_ppn == -1:
+                                col_ppn = i
                                 
                     if col_nama != -1 and col_harga != -1:
                         for idx, row in df_input.iloc[start_idx+1:].iterrows():
@@ -765,7 +758,6 @@ if menu == "Pembersihan PO":
                                     month_fpb = m_fpb.group(2)
                                     tgl_val = f"{year_fpb}-{month_fpb}-01"
                                 
-                                # V12.0 PPN FIX: Tangkap nilai PPN
                                 ppn_val = str(row.values[col_ppn]).strip().upper() if col_ppn != -1 else "NON PPN"
                                 if ppn_val in ['NAN', 'NONE', '-', '']: ppn_val = "NON PPN"
                                             
@@ -846,7 +838,6 @@ if menu == "Pembersihan PO":
                             "QTY": r['QTY'], "HARGA": r['HARGA'], "STATUS PPN": r['STATUS_PPN']
                         })
                 
-                # REORDER COLUMNS untuk tampilan tabel (Biar PPN ada di sebelah HARGA)
                 cols_order = ["❌ BUKAN SCOPE", "UNIT", "PO", "TANGGAL", "VENDOR", "ITEM_ASLI", "NAMA_BAKU", "QTY", "HARGA", "STATUS PPN", "KATEGORI", "DETAIL KATEGORI", "SKU"]
                 st.session_state['holding_draft'] = pd.DataFrame(final_draft)[cols_order]
                 st.rerun()
@@ -915,12 +906,11 @@ if menu == "Pembersihan PO":
                                 kat_final = str(r.get('KATEGORI', '-')).strip().upper()
                                 det_kat_final = str(r.get('DETAIL KATEGORI', '-')).strip().upper()
                             
-                            # V12.0 PPN FIX: Menambahkan STATUS PPN tepat di Kolom K (Setelah HARGA)
                             data_to_push.append([
                                 r['UNIT'], r['PO'], r['TANGGAL'], r['VENDOR'], "RP", 
                                 r['ITEM_ASLI'], r['NAMA_BAKU'], r['QTY'], 
                                 info.get('SATUAN', '-'), r['HARGA'], 
-                                r['STATUS PPN'], # <--- INI KOLOM K BARU
+                                r['STATUS PPN'],
                                 kat_final, det_kat_final, r['SKU'],
                                 waktu_rekap 
                             ])
@@ -1570,7 +1560,7 @@ st.markdown("---")
 sync_time = get_sync_time()
 st.markdown(
     f"<p style='text-align: center; color: #94A3B8; font-size: 12px; line-height: 1.5;'>"
-    f"ERP Purchasing System v12.0 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti<br>"
+    f"ERP Purchasing System v12.1 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti<br>"
     f"<span style='color: #10B981; font-weight: 600;'>🟢 Live Database tersinkronisasi pada: {sync_time}</span>"
     f"</p>", 
     unsafe_allow_html=True
