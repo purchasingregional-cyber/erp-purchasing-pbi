@@ -2,8 +2,8 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 12.5 (ULTIMATE FULL VERSION - Twin Pillars PO & FPB Support)
-# Fitur: Split PO & FPB, Smart Hybrid Filter, True Date Sorting, Anti-Dark Mode
+# Versi: 12.7 (ULTIMATE FULL VERSION - PIHS Solo Format Conqueror)
+# Fitur: Fix PIHS Month & PO String, Split PO & FPB, Smart Hybrid Filter, Anti-Dark Mode
 # ==============================================================================
 
 import streamlit as st
@@ -596,10 +596,10 @@ if menu == "Pembersihan PO":
                 else:
                     format_type = master_format_type
 
-                # --- V12.5 FIX: TWIN PILLARS (PO & FPB) ---
-                col_nama = col_qty = col_harga = col_vendor = col_po_asli = col_fpb = col_tgl = col_ppn = -1
+                col_nama = col_qty = col_harga = col_vendor = col_po_asli = col_fpb = col_tgl = col_ppn = col_ket = -1
                 start_idx = 0
                 global_date = "-"
+                current_solo_month = "" # V12.7 FIX: Penampung bulan khusus Solo
 
                 if format_type == "RA_OLD":
                     curr_po, curr_tgl, curr_vendor = "", "-", "-"
@@ -627,6 +627,7 @@ if menu == "Pembersihan PO":
                             if date_m:
                                 curr_tgl = date_m.split(" ")[0]
                                 curr_po = po_m if po_m else "" 
+                                curr_po = re.sub(r'^[\s:]+', '', curr_po) # CLEAN PO
                                 potensi_vendor = [v for v in val_list if v != date_m and v != po_m and not re.match(r'^[-0-9.,]+$', v) and "00/01/1900" not in v]
                                 curr_vendor = max(potensi_vendor, key=len).replace("00/01/1900", "").strip() if potensi_vendor else "CASH / TANPA NAMA"
                                 continue
@@ -658,6 +659,7 @@ if menu == "Pembersihan PO":
                         if "INCLUDE" in line_text or "EXCLUDE" in line_text:
                             curr_po = val_list[0] if len(val_list) > 0 else ""
                             if curr_po.upper() in ["INCLUDE", "EXCLUDE"]: curr_po = "" 
+                            curr_po = re.sub(r'^[\s:]+', '', curr_po) # CLEAN PO
                             
                             for c in val_list: 
                                 m = re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', c)
@@ -723,7 +725,6 @@ if menu == "Pembersihan PO":
                                 col_vendor = i; start_idx = max(start_idx, idx)
                             elif ('QTY' in x_clean) and col_qty == -1: 
                                 col_qty = i
-                            # --- V12.5 FIX: PISAHKAN MATA PO ASLI DAN FPB ---
                             elif ('NO PO' in x_clean or 'NOMOR PO' in x_clean or 'NO. PO' in x_clean) and 'STATUS' not in x_clean: 
                                 col_po_asli = i
                             elif ('NO FPB' in x_clean or 'NO. FPB' in x_clean or 'NO PB' in x_clean):
@@ -732,6 +733,11 @@ if menu == "Pembersihan PO":
                                 col_tgl = i
                             elif ('PPN' in x_clean) and col_ppn == -1:
                                 col_ppn = i
+                            elif ('KETERANGAN' in x_clean) and col_ket == -1:
+                                col_ket = i
+
+                    if col_ppn == -1 and col_ket != -1:
+                        col_ppn = col_ket
                                 
                     if col_nama != -1 and col_harga != -1:
                         for idx, row in df_input.iloc[start_idx+1:].iterrows():
@@ -739,6 +745,15 @@ if menu == "Pembersihan PO":
                             if not val_list: continue
                             
                             line_text = " | ".join(val_list).upper()
+                            
+                            # --- V12.7 FIX: SOLO MONTH TRACKER ---
+                            if detected_plant == "SOLO":
+                                for v in val_list:
+                                    v_up = str(v).strip().upper()
+                                    if v_up in ['JANUARI', 'FEBRUARI', 'MARET', 'APRIL', 'MEI', 'JUNI', 'JULI', 'AGUSTUS', 'SEPTEMBER', 'OKTOBER', 'NOVEMBER', 'DESEMBER']:
+                                        current_solo_month = v_up
+                                        break
+                                        
                             if any(x in line_text for x in ["SUBTOTAL", "TOTAL", "REKAP FORMULIR"]): continue
                             
                             try:
@@ -754,15 +769,13 @@ if menu == "Pembersihan PO":
                                 v_str = str(row.values[col_vendor]).strip() if col_vendor != -1 else "-"
                                 vendor_val = v_str if v_str.lower() not in ['nan', 'none', ''] else "CASH / TANPA NAMA"
                                 
-                                # TARIK NO PO ASLI
                                 po_str = str(row.values[col_po_asli]).strip() if col_po_asli != -1 else ""
                                 po_val = po_str if po_str.lower() not in ['nan', 'none', '-', ''] else ""
+                                po_val = re.sub(r'^[\s:]+', '', po_val) # --- V12.7 FIX: CLEAN PO DARI TITIK DUA ---
 
-                                # TARIK NO FPB / PB
                                 fpb_str = str(row.values[col_fpb]).strip() if col_fpb != -1 else ""
                                 fpb_val = fpb_str if fpb_str.lower() not in ['nan', 'none', '-', ''] else ""
 
-                                # Abaikan jika harga 0 dan dua-duanya (PO & FPB) kosong melompong
                                 if prc_val == 0 and po_val == "" and fpb_val == "": continue 
                                 
                                 tgl_val = "-"
@@ -777,7 +790,12 @@ if menu == "Pembersihan PO":
                                         m = re.search(r'\d{1,2}-[a-zA-Z]{3}-?\d{0,4}|\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', v)
                                         if m: tgl_val = m.group(0); break
                                 
-                                if tgl_val == "-" and global_date != "-":
+                                # --- V12.7 FIX: INJEKSI TANGGAL PRIORITAS SOLO ---
+                                if detected_plant == "SOLO" and current_solo_month != "":
+                                    year_m = re.search(r'\b(20\d{2})\b', global_date)
+                                    y_str = year_m.group(1) if year_m else "2026"
+                                    tgl_val = f"1 {current_solo_month} {y_str}"
+                                elif tgl_val == "-" and global_date != "-":
                                     tgl_val = global_date
                                     
                                 m_fpb_date = re.search(r'[A-Za-z]*(\d{2})(0[1-9]|1[0-2])[-/]', po_val)
@@ -786,8 +804,11 @@ if menu == "Pembersihan PO":
                                     month_fpb = m_fpb_date.group(2)
                                     tgl_val = f"{year_fpb}-{month_fpb}-01"
                                 
-                                ppn_val = str(row.values[col_ppn]).strip().upper() if col_ppn != -1 else "NON PPN"
-                                if ppn_val in ['NAN', 'NONE', '-', '']: ppn_val = "NON PPN"
+                                ppn_raw = str(row.values[col_ppn]).strip().upper() if col_ppn != -1 else "NON PPN"
+                                if ppn_raw == "PPN":
+                                    ppn_val = "PPN"
+                                else:
+                                    ppn_val = "NON PPN"
                                             
                                 extracted_rows.append({
                                     "UNIT KERJA": detected_plant, "NO PO": po_val, "NO FPB": fpb_val, "TANGGAL": tgl_val, "VENDOR": vendor_val,
@@ -805,6 +826,7 @@ if menu == "Pembersihan PO":
 
                         if "INCLUDE" in line or "EXCLUDE" in line:
                             curr_po = val_list[0] if len(val_list)>0 else ""
+                            curr_po = re.sub(r'^[\s:]+', '', curr_po) # CLEAN PO
                             for c in val_list: 
                                 m = re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', c)
                                 if m: curr_tgl = m.group(0); break
@@ -866,7 +888,6 @@ if menu == "Pembersihan PO":
                             "QTY": r['QTY'], "HARGA": r['HARGA'], "STATUS PPN": r['STATUS_PPN']
                         })
                 
-                # --- V12.5 FIX: TATA LETAK KOLOM BARU DI TABEL EDITOR ---
                 cols_order = ["❌ BUKAN SCOPE", "UNIT", "PO", "NO FPB", "TANGGAL", "VENDOR", "ITEM_ASLI", "NAMA_BAKU", "QTY", "HARGA", "STATUS PPN", "KATEGORI", "DETAIL KATEGORI", "SKU"]
                 st.session_state['holding_draft'] = pd.DataFrame(final_draft)[cols_order]
                 st.rerun()
@@ -903,7 +924,6 @@ if menu == "Pembersihan PO":
         manual_date = st.date_input("📅 Set Tanggal Rekap Manual (Backdate):") if not auto_time else None
         
         st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
-        # --- V12.5 FIX: NAMA CHECKBOX BARU & FUNGSI HYBRID ---
         filter_dokumen_valid = st.checkbox("✅ HANYA SIMPAN & EXCEL-KAN DATA YANG MEMILIKI DOKUMEN VALID (Abaikan jika PO & FPB Kosong)", value=True, help="Jika dicentang, barang yang tidak punya PO dan tidak punya FPB tidak akan dimasukkan ke database.")
             
         st.markdown("<br>", unsafe_allow_html=True)
@@ -918,7 +938,6 @@ if menu == "Pembersihan PO":
                         
                         df_to_save = edited_df[edited_df["❌ BUKAN SCOPE"] == False]
                         
-                        # --- V12.5 FIX: FILTER HYBRID ---
                         if filter_dokumen_valid:
                             mask_po = df_to_save['PO'].astype(str).str.strip() != ""
                             mask_fpb = df_to_save['NO FPB'].astype(str).str.strip() != ""
@@ -938,7 +957,6 @@ if menu == "Pembersihan PO":
                                 kat_final = str(r.get('KATEGORI', '-')).strip().upper()
                                 det_kat_final = str(r.get('DETAIL KATEGORI', '-')).strip().upper()
                             
-                            # --- V12.5 FIX: SUSUNAN 15 KOLOM ---
                             data_to_push.append([
                                 r['UNIT'], r['PO'], r['NO FPB'], r['TANGGAL'], r['VENDOR'], "RP", 
                                 r['ITEM_ASLI'], r['NAMA_BAKU'], r['QTY'], 
@@ -966,7 +984,6 @@ if menu == "Pembersihan PO":
         try:
             df_to_export = edited_df[edited_df["❌ BUKAN SCOPE"] == False]
             
-            # --- V12.5 FIX: FILTER HYBRID UNTUK EXPORT ---
             if filter_dokumen_valid:
                 mask_po = df_to_export['PO'].astype(str).str.strip() != ""
                 mask_fpb = df_to_export['NO FPB'].astype(str).str.strip() != ""
@@ -1595,7 +1612,7 @@ st.markdown("---")
 sync_time = get_sync_time()
 st.markdown(
     f"<p style='text-align: center; color: #94A3B8; font-size: 12px; line-height: 1.5;'>"
-    f"ERP Purchasing System v12.5 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti<br>"
+    f"ERP Purchasing System v12.7 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti<br>"
     f"<span style='color: #10B981; font-weight: 600;'>🟢 Live Database tersinkronisasi pada: {sync_time}</span>"
     f"</p>", 
     unsafe_allow_html=True
