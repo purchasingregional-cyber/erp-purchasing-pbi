@@ -2,8 +2,8 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 12.3 (ULTIMATE FULL VERSION - True Real-Time Price Sorting Engine)
-# Fitur: Indonesian Month Decoder, True Date Sorting, Blank PO Filter, Anti-Dark Mode
+# Versi: 12.4 (ULTIMATE FULL VERSION - Bug Fix Indentation Error)
+# Fitur: True Date Sorting, Blank PO Filter, Force Light Mode, Fix Indentation
 # ==============================================================================
 
 import streamlit as st
@@ -223,27 +223,23 @@ def convert_to_standard_date(date_str):
     try:
         s = str(date_str).strip().upper()
         if not s or s in ['NAN', 'NONE', '-']:
-            return datetime.datetime(2000, 1, 1) # Fallback jika kosong
+            return datetime.datetime(2000, 1, 1) 
             
-        # Jika format sudah standar ISO YYYY-MM-DD
         if re.match(r'^\d{4}-\d{2}-\d{2}', s):
             return pd.to_datetime(s.split(' ')[0])
             
-        # Kamus Bulan Indonesia
         months_map = {
             'JANUARI': 1, 'FEBRUARI': 2, 'PEBRUARI': 2, 'MARET': 3, 'APRIL': 4, 'MEI': 5, 
             'JUNI': 6, 'JULI': 7, 'AGUSTUS': 8, 'SEPTEMBER': 9, 'OKTOBER': 10, 'NOVEMBER': 11, 'DESEMBER': 12,
             'JAN': 1, 'FEB': 2, 'MAR': 3, 'APR': 4, 'MEI': 5, 'JUN': 6, 'JUL': 7, 'AGU': 8, 'SEP': 9, 'OKT': 10, 'NOV': 11, 'DES': 12
         }
         
-        # Ekstraksi Angka Tanggal dan Nama Bulan (Misal: "16 MARET" atau "16 MARET 2026")
         match = re.search(r'(\d{1,2})\s+([A-Z]+)', s)
         if match:
             day = int(match.group(1))
             month_name = match.group(2)
             month = months_map.get(month_name, 1)
             
-            # Cari tahun di string, jika tidak ada, gunakan tahun berjalan (2026)
             year_match = re.search(r'\b(20\d{2})\b', s)
             year = int(year_match.group(1)) if year_match else 2026
             
@@ -362,13 +358,8 @@ try:
         df_valid_trans = df_trans.dropna(subset=[c_baku_h]).copy()
         
         if not df_valid_trans.empty:
-            # --- V12.3 FIX: DECODE DAN SORT BERDASARKAN TANGGAL NYATA ---
             df_valid_trans['TRUE_DATE'] = df_valid_trans[c_tgl_h].apply(convert_to_standard_date)
-            
-            # Sortir: Nama Barang Teratur, Tanggal Nyata Terlama -> Terbaru
             df_sorted = df_valid_trans.sort_values(by=[c_baku_h, 'TRUE_DATE'], ascending=[True, True])
-            
-            # Ambil duplikat paling terakhir (Otomatis Tanggal Paling Baru Se-Database!)
             df_latest = df_sorted.drop_duplicates(subset=[c_baku_h], keep='last')
             
             for _, row in df_latest.iterrows():
@@ -819,7 +810,6 @@ if menu == "Pembersihan PO":
                         if curr_po != "-":
                             if len(val_list) >= 4:
                                 nums = []
-                               _v = []
                                 for v in reversed(val_list):
                                     n = parse_numeric(v)
                                     if n is not None: nums.insert(0, n)
@@ -1270,7 +1260,6 @@ elif menu == "Dashboard Laporan":
             df_d['Q_NUM'] = pd.to_numeric(df_d['QTY'].astype(str).str.replace(r'[^0-9.]', '', regex=True), errors='coerce').fillna(0)
             df_d['TOTAL'] = df_d['H_NUM'] * df_d['Q_NUM']
             
-            # Dashboard tetap menggunakan parse aman standar Streamlit
             df_d['DATE_CLEAN'] = df_d[c_tgl].apply(convert_to_standard_date)
             
             if not df_d.empty:
@@ -1370,7 +1359,6 @@ elif menu == "Dashboard Laporan":
                         barang_pilih = st.multiselect("Search Product Intelligence (Bisa pilih lebih dari 1 untuk perbandingan):", list_barang_histori, placeholder="Pilih barang untuk dianalisa...")
                         
                         if barang_pilih:
-                            # Gunakan kolom internal DATE_CLEAN yang sudah disortir asli
                             df_item_histori = df_filtered[df_filtered[c_baku].isin(barang_pilih)].sort_values(by='DATE_CLEAN')
 
                             if len(barang_pilih) == 1:
@@ -1433,8 +1421,7 @@ elif menu == "Dashboard Laporan":
                                         latest_price = df_item_histori.sort_values(by='DATE_CLEAN').iloc[-1]['H_NUM']
                                         est_budget = avg_qty_per_month * latest_price
                                         
-                                        info_master_avail = df_master_clean[df_master_clean['NAMA BAKU'] == item_tunggal]
-                                        uom = info_master_avail.iloc[0].get('SATUAN', 'Pcs') if not info_master_avail.empty else "Pcs"
+                                        uom = row_m.get('SATUAN', '-') if not info_master.empty else "Pcs"
                                         
                                         c_fc1, c_fc2, c_fc3 = st.columns(3)
                                         with c_fc1: st.markdown(create_metric_card("fa-solid fa-chart-line", "Rata-rata Kebutuhan / Bulan", f"{avg_qty_per_month:.0f} {uom}"), unsafe_allow_html=True)
@@ -1591,7 +1578,7 @@ st.markdown("---")
 sync_time = get_sync_time()
 st.markdown(
     f"<p style='text-align: center; color: #94A3B8; font-size: 12px; line-height: 1.5;'>"
-    f"ERP Purchasing System v12.3 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti<br>"
+    f"ERP Purchasing System v12.4 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti<br>"
     f"<span style='color: #10B981; font-weight: 600;'>🟢 Live Database tersinkronisasi pada: {sync_time}</span>"
     f"</p>", 
     unsafe_allow_html=True
