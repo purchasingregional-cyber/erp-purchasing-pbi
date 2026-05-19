@@ -2,8 +2,8 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 12.8 (ULTIMATE FULL VERSION - Unlocked Maintenance Editor)
-# Fitur: Editable Category in Maintenance, Split PO & FPB, True Date Sorting
+# Versi: 12.9 (ULTIMATE FULL VERSION - Dynamic SKU Prefix via Level Column)
+# Fitur: Dynamic Prefix (001/002), Twin Pillars PO & FPB, True Date Sorting
 # ==============================================================================
 
 import streamlit as st
@@ -341,6 +341,7 @@ try:
     df_master.columns = df_master.columns.str.strip().str.upper()
     df_master = df_master.dropna(subset=['NAMA BAKU'])
     
+    if 'LEVEL' in df_master.columns: df_master['LEVEL'] = df_master['LEVEL'].ffill().astype(str).str.strip().str.upper()
     if 'KATEGORI' in df_master.columns: df_master['KATEGORI'] = df_master['KATEGORI'].ffill().astype(str).str.strip().str.upper()
     if 'DETAIL KATEGORI' in df_master.columns: df_master['DETAIL KATEGORI'] = df_master['DETAIL KATEGORI'].ffill().astype(str).str.strip().str.upper()
     
@@ -1530,16 +1531,24 @@ elif menu == "Maintenance Data":
                     df_m = pd.DataFrame(all_data[1:], columns=headers)
                     
                     c_s = next((c for c in headers if 'SKU' in c), None)
-                    c_k = next((c for c in headers if 'KATEGORI' in c and 'DETAIL' not in c), None)
+                    c_k = next((c for c in headers if 'KATEGORI' in c and 'DETAIL' not in c and 'LEVEL' not in c), None)
                     c_d = next((c for c in headers if 'DETAIL' in c), None)
                     c_tgl = next((c for c in headers if 'TANGGAL' in c or 'TGL' in c or 'DATE' in c), None) 
+                    
+                    # --- V12.9 FIX: DYNAMIC LEVEL DETECTION ---
+                    c_lvl = next((c for c in headers if 'LEVEL' in c or 'KELOMPOK' in c), None)
                     
                     if c_s and c_k and c_d:
                         preview_data = []
                         for idx, row in df_m.iterrows():
                             val = str(row[c_s]).strip()
                             if len(val) < 10 or val.upper() in ['NAN', 'NONE', 'NULL', '#N/A', '']: 
-                                new_sku = generate_new_sku("001", row[c_k], row[c_d], df_m)
+                                
+                                # Ambil angka awalan dari kolom Level
+                                prefix_val = extract_code(str(row[c_lvl])) if c_lvl else "001"
+                                if not prefix_val.isdigit(): prefix_val = "001"
+                                
+                                new_sku = generate_new_sku(prefix_val, row[c_k], row[c_d], df_m)
                                 df_m.at[idx, c_s] = new_sku
                                 
                                 tgl_val = row[c_tgl] if c_tgl else "-"
@@ -1548,6 +1557,7 @@ elif menu == "Maintenance Data":
                                     "Baris Excel": idx + 2, 
                                     "TANGGAL": tgl_val,
                                     "NAMA BAKU": row.get('NAMA BAKU', '-'),
+                                    "LEVEL": row[c_lvl] if c_lvl else "-",
                                     "KATEGORI": row[c_k],
                                     "DETAIL KATEGORI": row[c_d],
                                     "SKU BARU": new_sku
@@ -1559,7 +1569,7 @@ elif menu == "Maintenance Data":
                     st.error(f"Error: {e}")
 
         if 'preview_sku_list' in st.session_state:
-            st.info("💡 **Silakan edit manual 'KATEGORI', 'DETAIL KATEGORI', atau 'SKU BARU' langsung di tabel ini sebelum disimpan ke Master Data.**")
+            st.info("💡 **Silakan edit manual 'LEVEL', 'KATEGORI', 'DETAIL KATEGORI', atau 'SKU BARU' langsung di tabel ini sebelum disimpan ke Master Data.**")
             
             edited_preview = st.data_editor(
                 st.session_state['preview_sku_list'],
@@ -1576,18 +1586,17 @@ elif menu == "Maintenance Data":
                             df_full = st.session_state['draft_sku_df']
                             c_s = next((c for c in df_full.columns if 'SKU' in c), None)
                             c_tgl = next((c for c in df_full.columns if 'TANGGAL' in c or 'TGL' in c or 'DATE' in c), None)
-                            c_k = next((c for c in df_full.columns if 'KATEGORI' in c and 'DETAIL' not in c), None)
+                            c_k = next((c for c in df_full.columns if 'KATEGORI' in c and 'DETAIL' not in c and 'LEVEL' not in c), None)
                             c_d = next((c for c in df_full.columns if 'DETAIL' in c), None)
+                            c_lvl = next((c for c in df_full.columns if 'LEVEL' in c or 'KELOMPOK' in c), None)
                             
                             for _, row in edited_preview.iterrows():
                                 excel_idx = row["Baris Excel"] - 2
                                 if c_s: df_full.at[excel_idx, c_s] = row["SKU BARU"]
-                                if c_tgl and "TANGGAL" in row:
-                                    df_full.at[excel_idx, c_tgl] = row["TANGGAL"]
-                                if c_k and "KATEGORI" in row:
-                                    df_full.at[excel_idx, c_k] = row["KATEGORI"]
-                                if c_d and "DETAIL KATEGORI" in row:
-                                    df_full.at[excel_idx, c_d] = row["DETAIL KATEGORI"]
+                                if c_tgl and "TANGGAL" in row: df_full.at[excel_idx, c_tgl] = row["TANGGAL"]
+                                if c_k and "KATEGORI" in row: df_full.at[excel_idx, c_k] = row["KATEGORI"]
+                                if c_d and "DETAIL KATEGORI" in row: df_full.at[excel_idx, c_d] = row["DETAIL KATEGORI"]
+                                if c_lvl and "LEVEL" in row: df_full.at[excel_idx, c_lvl] = row["LEVEL"]
                                 
                             client = get_gspread_client()
                             sheet_master = client.open_by_key(SHEET_ID).get_worksheet(0)
@@ -1616,7 +1625,7 @@ st.markdown("---")
 sync_time = get_sync_time()
 st.markdown(
     f"<p style='text-align: center; color: #94A3B8; font-size: 12px; line-height: 1.5;'>"
-    f"ERP Purchasing System v12.8 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti<br>"
+    f"ERP Purchasing System v12.9 | Proprietary of PT Panca Budi Idaman Tbk | Created with ❤️ for Raihan Subakti<br>"
     f"<span style='color: #10B981; font-weight: 600;'>🟢 Live Database tersinkronisasi pada: {sync_time}</span>"
     f"</p>", 
     unsafe_allow_html=True
