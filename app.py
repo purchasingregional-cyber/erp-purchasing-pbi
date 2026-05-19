@@ -2,8 +2,8 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 14.2 (THE ULTIMATE PLANT FUSION - Bug Fix Syntax Error)
-# Fitur: Laporan PO Auto-Detect, Auto-Fill PCS, Twin Pillars PO/FPB, Smart Editor
+# Versi: 14.3 (THE ULTIMATE PLANT FUSION - Smart Column Switcher)
+# Fitur: Multi-Column Detection (Nama Barang/Bahan), Auto-Fill PCS, Twin Pillars
 # ==============================================================================
 
 import streamlit as st
@@ -429,13 +429,13 @@ if menu == "Pembersihan PO":
                 if master_format_type is None: master_format_type = format_type
                 else: format_type = master_format_type
 
-                col_nama = col_qty = col_harga = col_vendor = col_po_asli = col_fpb = col_tgl = col_ppn = col_ket = col_sat = -1
+                col_nama = col_bahan = col_qty = col_harga = col_vendor = col_po_asli = col_fpb = col_tgl = col_ppn = col_ket = col_sat = -1
                 start_idx = 0
                 global_date = "-"
                 current_solo_month = ""
 
                 # ===================================================================
-                # LOGIKA 1: LAPORAN PO (NEW TANGERANG PBI)
+                # LOGIKA 1: LAPORAN PO (TANGERANG & PEMALANG) - V14.3 UPGRADED
                 # ===================================================================
                 if format_type == "LAPORAN_PO":
                     col_no_bukti = -1
@@ -448,13 +448,14 @@ if menu == "Pembersihan PO":
                                 if "NO BUKTI" in x: col_no_bukti = i
                                 elif "T. TERIMA" in x: col_t_terima = i
                                 elif "NAMA BARANG" in x: col_nama = i
+                                elif "NAMA BAHAN" in x: col_bahan = i # KHUSUS PEMALANG
                                 elif "QTY1" in x or "QTY" in x: col_qty = i
                                 elif "HARGA" in x: col_harga = i
                                 elif "PPN" in x and "PPH" not in x: col_ppn = i
                             start_idx = idx
                             break
                             
-                    if col_no_bukti != -1 and col_nama != -1:
+                    if col_no_bukti != -1 and (col_nama != -1 or col_bahan != -1):
                         curr_vendor = "CASH / TANPA NAMA"
                         for idx, row in df_input.iloc[start_idx+1:].iterrows():
                             val_list = [str(c).strip() for c in row.values if pd.notna(c) and str(c).strip() != '']
@@ -474,7 +475,14 @@ if menu == "Pembersihan PO":
                                 
                             # Baris Barang
                             if val_bukti != "" and val_tgl != "":
-                                item_name = str(row.values[col_nama]).strip()
+                                # SMART COLUMN SWITCHER (Tangerang vs Pemalang)
+                                item_val1 = str(row.values[col_nama]).strip() if col_nama != -1 and pd.notna(row.values[col_nama]) else ""
+                                item_val2 = str(row.values[col_bahan]).strip() if col_bahan != -1 and pd.notna(row.values[col_bahan]) else ""
+                                
+                                item_name = item_val1
+                                if item_name.lower() in ['', 'nan', 'none'] or len(item_name) < 2:
+                                    item_name = item_val2
+                                    
                                 if item_name.lower() in ['', 'nan', 'none']: continue
                                 
                                 qty_val = parse_numeric(row.values[col_qty]) if col_qty != -1 else 1.0
@@ -1217,4 +1225,4 @@ elif menu == "Maintenance Data":
     else: st.success("✔️ Database Sehat. Semua SKU terverifikasi.")
 
 st.markdown("---")
-st.markdown(f"<p style='text-align: center; color: #94A3B8; font-size: 12px;'>ERP Purchasing System v14.2 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti<br><span style='color: #10B981; font-weight: 600;'>🟢 Live Database tersinkronisasi pada: {get_sync_time()}</span></p>", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align: center; color: #94A3B8; font-size: 12px;'>ERP Purchasing System v14.3 | Proprietary of PT Panca Budi Idaman Tbk | Created with  for Raihan Subakti<br><span style='color: #10B981; font-weight: 600;'>🟢 Live Database tersinkronisasi pada: {get_sync_time()}</span></p>", unsafe_allow_html=True)
