@@ -580,10 +580,10 @@ if menu == "Pembersihan PO":
                     elif "Plant Pemalang" in pilihan_format: detected_plant = "PEMALANG"
                     elif "Plant Solo" in pilihan_format: detected_plant = "SOLO"
                     
-                    # Cek 15 Baris Pertama untuk Plant Tangerang Format Baru
+                    # Cek 15 Baris Pertama untuk mendeteksi Format Baru (Laporan PO)
                     teks_sampel = " ".join([str(v) for v in df_input.head(15).values.flatten() if pd.notna(v)]).upper()
                     
-                    if "LAPORAN PO PER PEMASOK" in teks_sampel or ("NO BUKTI" in teks_sampel and "T. TERIMA" in teks_sampel):
+                    if detected_plant == "TANGERANG" and ("LAPORAN PO PER PEMASOK" in teks_sampel or ("NO BUKTI" in teks_sampel and "T. TERIMA" in teks_sampel)):
                         format_type = "TANGERANG_LAP_PO"
                     else:
                         is_new = False
@@ -607,50 +607,47 @@ if menu == "Pembersihan PO":
                 # =====================================================================
                 if format_type == "TANGERANG_LAP_PO":
                     curr_vendor_memory = ""
-                    curr_po_memory = ""
                     
                     for idx, row in df_input.iterrows():
-                        row_cells = [str(c).strip() for c in row.values]
-                        row_str = " | ".join(row_cells).upper()
+                        vals = [str(x).strip() for x in row.values]
+                        row_str = " | ".join(vals).upper()
                         
-                        if any(x in row_str for x in ["SUBTOTAL", "GRAND TOTAL", "LAPORAN PO", "PAGE"]): continue
+                        if any(x in row_str for x in ["SUBTOTAL", "GRAND TOTAL", "LAPORAN PO", "S/D"]): continue
                         
-                        # Deteksi Baris Vendor (Warna Biru) & Nomor PO
-                        po_match = re.search(r'(02PBI-[A-Z0-9-]+|\b02PBI\d+\b)', row_str)
-                        if po_match:
-                            curr_po_memory = po_match.group(1)
-                            # Ekstrak Vendor (biasanya ada di sisa string baris tersebut)
-                            potensi_vendor = [c for c in row.values if pd.notna(c) and str(c).strip() != "" and curr_po_memory not in str(c) and str(c).strip().upper() not in ["RP", "EUR", "USD", "NO BUKTI", "T. TERIMA", "NAMA BARANG"]]
-                            if potensi_vendor:
-                                curr_vendor_memory = str(potensi_vendor[0]).strip()
+                        # Kolom B (index 1) adalah kunci untuk No PO atau Vendor
+                        col_b = vals[1] if len(vals) > 1 else ""
+                        
+                        # DETEKSI BARIS VENDOR (Tidak ada 02PBI, bukan header, ada teks)
+                        if "02PBI" not in col_b.upper() and col_b != "" and col_b.upper() not in ["NO BUKTI", "EUR", "RP", "NAN", "NONE"]:
+                            curr_vendor_memory = col_b
                             continue
                         
-                        # Deteksi Baris Barang (Punya Tanggal di Kolom B/C)
-                        date_m = re.search(r'(\d{2}/\d{2}/\d{4}|\d{2}-\d{2}-\d{4})', row_str)
-                        if date_m and curr_vendor_memory != "":
-                            # Cari Nama Barang (di Kolom C, D, atau E)
-                            item_name = ""
-                            for c_idx in [2, 3, 4]: 
-                                if c_idx < len(row.values) and pd.notna(row.values[c_idx]) and str(row.values[c_idx]).strip() != "" and not re.search(r'\d{2}/\d{2}/\d{4}', str(row.values[c_idx])):
-                                    item_name = str(row.values[c_idx]).strip()
-                                    break
+                        # DETEKSI BARIS BARANG (Ada 02PBI)
+                        if "02PBI" in col_b.upper():
+                            po_val = col_b
+                            # Tanggal di Kolom D (Index 3)
+                            tgl_val = vals[3] if len(vals) > 3 and vals[3].lower() not in ['nan', 'none', ''] else "-"
                             
-                            if not item_name or item_name.lower() in ['nan', 'none', 'nama barang', 'nama bahan', 'eur', 'rp']: continue
+                            # Nama barang prioritas Kolom G (index 6), kalau kosong Kolom E (index 4)
+                            item_name = vals[6] if len(vals) > 6 and vals[6].lower() not in ['nan', 'none', ''] else (vals[4] if len(vals) > 4 else "")
+                            if item_name.lower() in ['', 'nan', 'none', 'nama barang', 'nama bahan', 'eur', 'rp']: continue
                             
-                            qty_val = parse_numeric(row.values[5]) if len(row.values) > 5 else 1.0
+                            # Qty di Kolom K (Index 10)
+                            qty_val = parse_numeric(vals[10]) if len(vals) > 10 else 1.0
                             if qty_val is None: qty_val = 1.0
                             
-                            prc_val = parse_numeric(row.values[8]) if len(row.values) > 8 else 0.0
+                            # Harga di Kolom O (Index 14)
+                            prc_val = parse_numeric(vals[14]) if len(vals) > 14 else 0.0
                             if prc_val is None: prc_val = 0.0
                             
-                            # Deteksi PPN (Kolom K/L)
+                            # PPn di Kolom T (Index 19)
                             ppn_val = "NON PPN"
-                            if len(row.values) > 11:
-                                ppn_num = parse_numeric(row.values[11])
+                            if len(vals) > 19:
+                                ppn_num = parse_numeric(vals[19])
                                 if ppn_num and ppn_num > 0: ppn_val = "PPN"
 
                             extracted_rows.append({
-                                "UNIT KERJA": "TANGERANG", "NO PO": curr_po_memory, "NO FPB": "", "TANGGAL": date_m.group(0), "VENDOR": curr_vendor_memory,
+                                "UNIT KERJA": "TANGERANG", "NO PO": po_val, "NO FPB": "", "TANGGAL": tgl_val, "VENDOR": curr_vendor_memory,
                                 "MATA UANG": "RP", "ITEM_KOTOR": item_name, "QTY": qty_val, "SATUAN": "PCS", "HARGA": prc_val, "STATUS_PPN": ppn_val
                             })
 
@@ -1022,7 +1019,6 @@ if menu == "Pembersihan PO":
                 except Exception as e: st.error(f"Simpan Gagal: {e}")
         with c2:
             if st.button("❌ Batalkan Semua", use_container_width=True): del st.session_state['holding_draft']; st.rerun()
-
 # ==========================================
 # MENU 2: PENCARIAN BARANG
 # ==========================================
