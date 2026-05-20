@@ -2,8 +2,8 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 17.0 (THE HYPER-CACHE VERSION - Maximum Loading Speed)
-# Fitur: Cached Data Processing, PGP PI Saldo Detector, Auto-Fill PCS
+# Versi: 16.0 (THE SPEEDSTER & MULTI-PLANT HYBRID VERSION)
+# Fitur: Ultra Fast Loading, PGP PI Saldo Detector, Auto-Fill PCS, Unlocked Master
 # ==============================================================================
 
 import streamlit as st
@@ -80,7 +80,7 @@ def get_gspread_client():
     return gspread.authorize(creds)
 
 @st.cache_data(ttl=120) 
-def load_raw_data(gid):
+def load_data(gid):
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={gid}"
     return pd.read_csv(url)
 
@@ -206,64 +206,53 @@ def col_num_to_letter(n):
     return string
 
 # ==========================================
-# 4. LOAD CORE DATA & DYNAMIC PRICING LOGIC (HYPER-CACHED)
+# 4. LOAD CORE DATA & DYNAMIC PRICING LOGIC
 # ==========================================
-@st.cache_data(ttl=120)
-def get_processed_database():
-    try:
-        # Load Raw Data
-        df_m = pd.read_csv(f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={GID_MASTER}")
-        df_t = pd.read_csv(f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={GID_DASHBOARD}")
+try:
+    df_master = load_data(GID_MASTER)
+    df_master.columns = df_master.columns.str.strip().str.upper()
+    df_master = df_master.dropna(subset=['NAMA BAKU'])
+    
+    c_lvl = next((c for c in df_master.columns if 'LEVEL' in c or 'KELOMPOK' in c), 'LEVEL')
+    if c_lvl in df_master.columns: df_master[c_lvl] = df_master[c_lvl].ffill().astype(str).str.strip().str.upper()
+    if 'KATEGORI' in df_master.columns: df_master['KATEGORI'] = df_master['KATEGORI'].ffill().astype(str).str.strip().str.upper()
+    if 'DETAIL KATEGORI' in df_master.columns: df_master['DETAIL KATEGORI'] = df_master['DETAIL KATEGORI'].ffill().astype(str).str.strip().str.upper()
+    
+    df_trans = load_data(GID_DASHBOARD)
+    df_trans.columns = df_trans.columns.str.strip().str.upper()
+    
+    c_tgl_h = next((c for c in df_trans.columns if ('TANGGAL' in c or 'TGL' in c or 'DATE' in c) and 'REKAP' not in c), None)
+    c_harga_h = next((c for c in df_trans.columns if 'HARGA' in c), None)
+    c_baku_h = next((c for c in df_trans.columns if 'BAKU' in c), None)
+    
+    latest_price_map = {}
+    if c_tgl_h and c_harga_h and c_baku_h:
+        df_trans['PRICE_TEMP'] = df_trans[c_harga_h].apply(parse_harga)
+        df_valid_trans = df_trans.dropna(subset=[c_baku_h]).copy()
         
-        # Clean Master
-        df_m.columns = df_m.columns.str.strip().str.upper()
-        df_m = df_m.dropna(subset=['NAMA BAKU'])
-        
-        c_lvl = next((c for c in df_m.columns if 'LEVEL' in c or 'KELOMPOK' in c), 'LEVEL')
-        if c_lvl in df_m.columns: df_m[c_lvl] = df_m[c_lvl].ffill().astype(str).str.strip().str.upper()
-        if 'KATEGORI' in df_m.columns: df_m['KATEGORI'] = df_m['KATEGORI'].ffill().astype(str).str.strip().str.upper()
-        if 'DETAIL KATEGORI' in df_m.columns: df_m['DETAIL KATEGORI'] = df_m['DETAIL KATEGORI'].ffill().astype(str).str.strip().str.upper()
-        
-        # Build Lookup and Dictionary
-        df_m['AI_LOOKUP'] = df_m['NAMA BAKU'].astype(str).str.upper()
-        if 'NAMA ITEM' in df_m.columns: df_m['AI_LOOKUP'] += " " + df_m['NAMA ITEM'].fillna("").astype(str).str.upper()
-        s_list = df_m['AI_LOOKUP'].tolist()
-        l_map = dict(zip(df_m['AI_LOOKUP'], df_m['NAMA BAKU']))
-        
-        df_m_clean = df_m.drop_duplicates(subset=['NAMA BAKU'], keep='last').copy()
-        m_info = df_m_clean.set_index('NAMA BAKU').to_dict('index')
+        if not df_valid_trans.empty:
+            df_valid_trans['TRUE_DATE'] = df_valid_trans[c_tgl_h].apply(convert_to_standard_date)
+            df_sorted = df_valid_trans.sort_values(by=[c_baku_h, 'TRUE_DATE'], ascending=[True, True])
+            df_latest = df_sorted.drop_duplicates(subset=[c_baku_h], keep='last')
+            
+            for _, row in df_latest.iterrows():
+                if row['PRICE_TEMP'] > 0:
+                    latest_price_map[str(row[c_baku_h]).strip().upper()] = {
+                        'harga': row['PRICE_TEMP'],
+                        'tanggal': str(row[c_tgl_h]).strip()
+                    }
 
-        # Clean Transaksi & Latest Price
-        df_t.columns = df_t.columns.str.strip().str.upper()
-        c_tgl_h = next((c for c in df_t.columns if ('TANGGAL' in c or 'TGL' in c or 'DATE' in c) and 'REKAP' not in c), None)
-        c_harga_h = next((c for c in df_t.columns if 'HARGA' in c), None)
-        c_baku_h = next((c for c in df_t.columns if 'BAKU' in c), None)
+    df_master['AI_LOOKUP'] = df_master['NAMA BAKU'].astype(str).str.upper()
+    if 'NAMA ITEM' in df_master.columns: df_master['AI_LOOKUP'] += " " + df_master['NAMA ITEM'].fillna("").astype(str).str.upper()
         
-        lp_map = {}
-        if c_tgl_h and c_harga_h and c_baku_h:
-            df_t['PRICE_TEMP'] = df_t[c_harga_h].apply(parse_harga)
-            df_valid_t = df_t.dropna(subset=[c_baku_h]).copy()
-            if not df_valid_t.empty:
-                df_valid_t['TRUE_DATE'] = df_valid_t[c_tgl_h].apply(convert_to_standard_date)
-                df_sorted = df_valid_t.sort_values(by=[c_baku_h, 'TRUE_DATE'], ascending=[True, True])
-                df_latest = df_sorted.drop_duplicates(subset=[c_baku_h], keep='last')
-                for _, row in df_latest.iterrows():
-                    if row['PRICE_TEMP'] > 0:
-                        lp_map[str(row[c_baku_h]).strip().upper()] = {
-                            'harga': row['PRICE_TEMP'],
-                            'tanggal': str(row[c_tgl_h]).strip()
-                        }
-                        
-        return df_m, df_m_clean, m_info, s_list, l_map, lp_map
-    except Exception as e:
-        return None, None, None, None, None, None
+    search_list = df_master['AI_LOOKUP'].tolist()
+    lookup_to_baku_map = dict(zip(df_master['AI_LOOKUP'], df_master['NAMA BAKU']))
+    
+    df_master_clean = df_master.drop_duplicates(subset=['NAMA BAKU'], keep='last').copy()
+    mapping_master_info = df_master_clean.set_index('NAMA BAKU').to_dict('index')
 
-df_master, df_master_clean, mapping_master_info, search_list, lookup_to_baku_map, latest_price_map = get_processed_database()
-
-if df_master is None:
-    st.error("⚠️ Gagal Load Database Utama (Koneksi Terputus).")
-    st.stop()
-
+except Exception as e:
+    st.error(f"⚠️ Gagal Load Database Utama: {e}"); st.stop()
 
 # ==========================================
 # 5. SISTEM KEAMANAN LUXURY (2 PINTU LOGIN)
@@ -285,27 +274,6 @@ if not st.session_state['logged_in']:
             st.markdown("""
             **Selamat datang di ERP Purchasing PT Panca Budi Idaman Tbk!**
             Sistem ini dirancang untuk mempermudah operasional *Supply Chain*, pencarian spesifikasi barang, dan standardisasi data antar seluruh pabrik.
-
-            ---
-            **🚪 1. PINTU TAMU (Guest Access)**
-            Dikhususkan untuk staf Pabrik atau Gudang.
-            * **Akses Masuk:** Tidak memerlukan kata sandi. Langsung klik tombol putih *"Masuk Sebagai Tamu"*.
-            * **Fitur Terbuka:** * `Pencarian Barang`: Ketik nama barang/SKU untuk mencari spesifikasi standar pusat.
-                * `E-Catalog`: Melihat foto fisik barang, estimasi harga terakhir beserta Tanggal PO-nya, dan download PDF Katalog.
-                * `Database Vendor`: Mencari nomor telepon dan nama PIC Supplier.
-            * *Catatan: Modul Tamu bersifat "Read-Only". Anda tidak dapat menghapus atau merubah data apapun.*
-
-            **👑 2. PINTU ADMIN (Admin Portal)**
-            Dikhususkan untuk tim Holding Purchasing Pusat.
-            * **Akses Masuk:** Wajib memasukkan Kata Sandi Rahasia Otoritas.
-            * **Fitur Ekstra Terbuka:**
-                * `Pembersihan PO`: Mesin AI untuk menyamakan nama laporan mentah dari plant (RA, PGP, dll) ke dalam bahasa standar Holding.
-                * `Double Injection`: Simpan ke Sheet 3 & Sheet 4 secara bersamaan.
-                * `Asset Studio`: Fitur Injeksi Gambar (Bisa Copy-Paste Ctrl+V langsung dari Google).
-                * `Dashboard Laporan`: Akses *Executive Filter* dan AI Forecasting.
-            
-            ---
-            *Bila Anda mengalami kendala teknis, silakan hubungi Tim Purchasing Holding Pusat.*
             """)
     
     st.markdown("<div style='margin-bottom: 2.5vh;'></div>", unsafe_allow_html=True)
@@ -506,7 +474,7 @@ if menu == "Pembersihan PO":
                                 })
 
                 # ===================================================================
-                # LOGIKA 2: LAPORAN PI SALDO (NEW PGP FORMAT DETECTOR)
+                # LOGIKA 2: LAPORAN PI SALDO (NEW PGP FORMAT DETECTOR) - V16.0 ADDED
                 # ===================================================================
                 elif format_type == "LAPORAN_PI_SALDO":
                     col_tgl_lpb = -1
@@ -1195,4 +1163,4 @@ elif menu == "Maintenance Data":
     else: st.success("✔️ Database Sehat. Semua SKU terverifikasi.")
 
 st.markdown("---")
-st.markdown(f"<p style='text-align: center; color: #94A3B8; font-size: 12px;'>ERP Purchasing System v17.0 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti<br><span style='color: #10B981; font-weight: 600;'>🟢 Live Database tersinkronisasi pada: {get_sync_time()}</span></p>", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align: center; color: #94A3B8; font-size: 12px;'>ERP Purchasing System v16.0 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti<br><span style='color: #10B981; font-weight: 600;'>🟢 Live Database tersinkronisasi pada: {get_sync_time()}</span></p>", unsafe_allow_html=True)
