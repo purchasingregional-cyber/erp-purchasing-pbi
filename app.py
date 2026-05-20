@@ -2,7 +2,7 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 17.2 (THE HYPER-CACHE & VENDOR ANALYTICS VERSION)
+# Versi: 17.3 (THE HYPER-CACHE - Bug Fix Vendor Drill-Down)
 # Fitur: Ultra Fast Loading, Vendor Drill-Down, Multi-Plant Auto-Detect, Auto-Fill PCS
 # ==============================================================================
 
@@ -303,6 +303,9 @@ if not st.session_state['logged_in']:
                 * `Double Injection`: Simpan ke Sheet 3 & Sheet 4 secara bersamaan.
                 * `Asset Studio`: Fitur Injeksi Gambar (Bisa Copy-Paste Ctrl+V langsung dari Google).
                 * `Dashboard Laporan`: Akses *Executive Filter* dan AI Forecasting.
+            
+            ---
+            *Bila Anda mengalami kendala teknis, silakan hubungi Tim Purchasing Holding Pusat.*
             """)
     
     st.markdown("<div style='margin-bottom: 2.5vh;'></div>", unsafe_allow_html=True)
@@ -423,7 +426,7 @@ if menu == "Pembersihan PO":
                     is_laporan_po = False
                     is_laporan_pi_saldo = False
                     
-                    # SCANNER FORMAT MASIF
+                    # SCANNER FORMAT MASIF DENGAN KINERJA TINGGI
                     sample_text = " ".join([str(df_input.iloc[r].values).strip().upper() for r in range(min(20, len(df_input)))])
                     
                     if "LAPORAN PO PER PEMASOK" in sample_text: is_laporan_po = True
@@ -475,10 +478,12 @@ if menu == "Pembersihan PO":
                             val_bukti = str(row.values[col_no_bukti]).strip() if pd.notna(row.values[col_no_bukti]) else ""
                             val_tgl = str(row.values[col_t_terima]).strip() if col_t_terima != -1 and pd.notna(row.values[col_t_terima]) else ""
                             
+                            # Vendor Auto-Memory
                             if val_bukti != "" and val_tgl == "":
                                 if val_bukti.upper() not in ["EUR", "RP", "USD", "IDR"]: curr_vendor = val_bukti
                                 continue
                                 
+                            # Baris Barang
                             if val_bukti != "" and val_tgl != "":
                                 item_val1 = str(row.values[col_nama]).strip() if col_nama != -1 and pd.notna(row.values[col_nama]) else ""
                                 item_val2 = str(row.values[col_bahan]).strip() if col_bahan != -1 and pd.notna(row.values[col_bahan]) else ""
@@ -501,7 +506,7 @@ if menu == "Pembersihan PO":
                                 })
 
                 # ===================================================================
-                # LOGIKA 2: LAPORAN PI SALDO (PGP BARU)
+                # LOGIKA 2: LAPORAN PI SALDO (NEW PGP FORMAT DETECTOR)
                 # ===================================================================
                 elif format_type == "LAPORAN_PI_SALDO":
                     col_tgl_lpb = -1
@@ -995,10 +1000,24 @@ elif menu == "Database Vendor":
                     
                     # FITUR VENDOR DRILL-DOWN (TOGGLE)
                     if st.toggle(f"🔍 Tampilkan Histori Transaksi", key=f"tgl_{idx}"):
-                        histori = df_trans[df_trans['VENDOR'].astype(str).str.contains(v_name, case=False, na=False, regex=False)]
+                        histori = df_trans[df_trans['VENDOR'].astype(str).str.contains(v_name, case=False, na=False, regex=False)].copy()
                         if not histori.empty:
-                            histori_clean = histori[['TANGGAL', 'PO', 'UNIT', 'BAKU', 'QTY', 'HARGA', 'TOTAL']].copy()
-                            histori_clean.rename(columns={'BAKU': 'NAMA BARANG'}, inplace=True)
+                            c_po_v = next((c for c in histori.columns if 'PO' in c or 'BUKTI' in c), 'PO')
+                            c_unit_v = next((c for c in histori.columns if 'UNIT' in c or 'GRUP' in c), 'UNIT')
+                            c_harga_v = next((c for c in histori.columns if 'HARGA' in c), 'HARGA')
+                            c_baku_v = next((c for c in histori.columns if 'BAKU' in c), 'NAMA BARANG')
+                            c_tgl_v = next((c for c in histori.columns if ('TANGGAL' in c or 'TGL' in c or 'DATE' in c) and 'REKAP' not in c), 'TANGGAL')
+                            c_qty_v = next((c for c in histori.columns if 'QTY' in c), 'QTY')
+
+                            histori['H_NUM'] = histori[c_harga_v].apply(parse_harga)
+                            histori['Q_NUM'] = pd.to_numeric(histori[c_qty_v].astype(str).str.replace(r'[^0-9.]', '', regex=True), errors='coerce').fillna(0)
+                            histori['TOTAL'] = histori['H_NUM'] * histori['Q_NUM']
+                            
+                            histori_clean = histori[[c_tgl_v, c_po_v, c_unit_v, c_baku_v, c_qty_v, c_harga_v, 'TOTAL']].copy()
+                            histori_clean.rename(columns={c_baku_v: 'NAMA BARANG'}, inplace=True)
+                            histori_clean[c_harga_v] = histori_clean[c_harga_v].apply(format_rupiah)
+                            histori_clean['TOTAL'] = histori_clean['TOTAL'].apply(format_rupiah)
+                            
                             st.write(f"**Total Transaksi:** {len(histori)}")
                             st.dataframe(histori_clean, use_container_width=True, hide_index=True)
                         else:
@@ -1211,4 +1230,4 @@ elif menu == "Maintenance Data":
     else: st.success("✔️ Database Sehat. Semua SKU terverifikasi.")
 
 st.markdown("---")
-st.markdown(f"<p style='text-align: center; color: #94A3B8; font-size: 12px;'>ERP Purchasing System v17.2 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti<br><span style='color: #10B981; font-weight: 600;'>🟢 Live Database tersinkronisasi pada: {get_sync_time()}</span></p>", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align: center; color: #94A3B8; font-size: 12px;'>ERP Purchasing System v17.3 | Proprietary of PT Panca Budi Idaman Tbk | Created with ❤️ for Raihan Subakti<br><span style='color: #10B981; font-weight: 600;'> Live Database tersinkronisasi pada: {get_sync_time()}</span></p>", unsafe_allow_html=True)
