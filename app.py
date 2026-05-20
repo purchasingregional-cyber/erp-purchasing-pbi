@@ -2,8 +2,8 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 15.0 (THE SPEEDSTER & MULTI-PLANT HYBRID VERSION)
-# Fitur: Ultra Fast Loading, PGP PI Saldo Detector, Tangerang Multi-Column, Auto-Fill PCS
+# Versi: 16.0 (THE SPEEDSTER & MULTI-PLANT HYBRID VERSION)
+# Fitur: Ultra Fast Loading, PGP PI Saldo Detector, Auto-Fill PCS, Unlocked Master
 # ==============================================================================
 
 import streamlit as st
@@ -437,16 +437,21 @@ if menu == "Pembersihan PO":
                     if col_no_bukti != -1 and (col_nama != -1 or col_bahan != -1):
                         curr_vendor = "CASH / TANPA NAMA"
                         for idx, row in df_input.iloc[start_idx+1:].iterrows():
+                            val_list = [str(c).strip() for c in row.values if pd.notna(c) and str(c).strip() != '']
+                            if not val_list: continue
+                            line_text = " | ".join(val_list).upper()
+                            
+                            if any(x in line_text for x in ["JUMLAH", "TOTAL", "LAPORAN PO", "HALAMAN"]): continue
+                            
                             val_bukti = str(row.values[col_no_bukti]).strip() if pd.notna(row.values[col_no_bukti]) else ""
                             val_tgl = str(row.values[col_t_terima]).strip() if col_t_terima != -1 and pd.notna(row.values[col_t_terima]) else ""
                             
-                            if val_bukti == "" and val_tgl == "": continue
-                            if any(x in val_bukti.upper() for x in ["JUMLAH", "TOTAL", "LAPORAN PO", "HALAMAN"]): continue
-                            
+                            # Vendor Auto-Memory
                             if val_bukti != "" and val_tgl == "":
                                 if val_bukti.upper() not in ["EUR", "RP", "USD", "IDR"]: curr_vendor = val_bukti
                                 continue
                                 
+                            # Baris Barang
                             if val_bukti != "" and val_tgl != "":
                                 item_val1 = str(row.values[col_nama]).strip() if col_nama != -1 and pd.notna(row.values[col_nama]) else ""
                                 item_val2 = str(row.values[col_bahan]).strip() if col_bahan != -1 and pd.notna(row.values[col_bahan]) else ""
@@ -455,17 +460,21 @@ if menu == "Pembersihan PO":
                                 if item_name.lower() in ['', 'nan', 'none']: continue
                                 
                                 qty_val = parse_numeric(row.values[col_qty]) if col_qty != -1 else 1.0
+                                if qty_val is None: qty_val = 1.0
+                                
                                 prc_val = parse_numeric(row.values[col_harga]) if col_harga != -1 else 0.0
+                                if prc_val is None: prc_val = 0.0
+                                
                                 ppn_num = parse_numeric(row.values[col_ppn]) if col_ppn != -1 else 0.0
                                 ppn_val = "PPN" if ppn_num and ppn_num > 0 else "NON PPN"
                                 
                                 extracted_rows.append({
                                     "UNIT KERJA": detected_plant, "NO PO": val_bukti, "NO FPB": "", "TANGGAL": val_tgl, "VENDOR": curr_vendor,
-                                    "MATA UANG": "RP", "ITEM_KOTOR": item_name, "QTY": qty_val if qty_val else 1.0, "SATUAN": "PCS", "HARGA": prc_val if prc_val else 0.0, "STATUS_PPN": ppn_val
+                                    "MATA UANG": "RP", "ITEM_KOTOR": item_name, "QTY": qty_val, "SATUAN": "PCS", "HARGA": prc_val, "STATUS_PPN": ppn_val
                                 })
 
                 # ===================================================================
-                # LOGIKA 2: LAPORAN PI SALDO (NEW PGP FORMAT DETECTOR) - V15.0 ADDED
+                # LOGIKA 2: LAPORAN PI SALDO (NEW PGP FORMAT DETECTOR) - V16.0 ADDED
                 # ===================================================================
                 elif format_type == "LAPORAN_PI_SALDO":
                     col_tgl_lpb = -1
@@ -488,14 +497,16 @@ if menu == "Pembersihan PO":
                     if col_no_po != -1 and (col_nama != -1 or col_bahan != -1):
                         curr_vendor = "CASH / TANPA NAMA"
                         for idx, row in df_input.iloc[start_idx+1:].iterrows():
-                            val_po = str(row.values[col_no_po]).strip() if pd.notna(row.values[col_no_po]) else ""
+                            val_po = str(row.values[col_no_po]).strip() if col_no_po != -1 and pd.notna(row.values[col_no_po]) else ""
                             val_tgl_raw = str(row.values[col_tgl_lpb]).strip() if col_tgl_lpb != -1 and pd.notna(row.values[col_tgl_lpb]) else ""
                             
-                            if val_po == "" and val_tgl_raw == "": continue
-                            if any(x in val_po.upper() for x in ["JUMLAH", "TOTAL", "LAPORAN PI", "HALAMAN"]): continue
-                            
-                            if val_po != "" and val_tgl_raw == "":
-                                if val_po.upper() not in ["EUR", "RP", "USD", "IDR"] and "03PGP" not in val_po.upper(): curr_vendor = val_po
+                            if val_po == "" and val_tgl_raw == "":
+                                # Cek Vendor Biru di baris kosong
+                                potensi_vendor = [str(c).strip() for c in row.values if pd.notna(c) and str(c).strip() != '']
+                                if potensi_vendor:
+                                    kandidat = potensi_vendor[0].upper()
+                                    if kandidat not in ["EUR", "RP", "USD", "IDR"] and "JUMLAH" not in kandidat and "TOTAL" not in kandidat and "S/D" not in kandidat:
+                                        curr_vendor = potensi_vendor[0]
                                 continue
                                 
                             if val_po != "" and val_tgl_raw != "":
@@ -507,6 +518,7 @@ if menu == "Pembersihan PO":
                                 tgl_clean = val_tgl_raw.split(" ")[0] if " " in val_tgl_raw else val_tgl_raw
                                 qty_val = parse_numeric(row.values[col_qty]) if col_qty != -1 else 1.0
                                 sat_val = str(row.values[col_sat]).strip() if col_sat != -1 and pd.notna(row.values[col_sat]) else "PCS"
+                                if sat_val.upper() in ['NAN', 'NONE', '']: sat_val = "PCS"
                                 prc_val = parse_numeric(row.values[col_harga]) if col_harga != -1 else 0.0
                                 ppn_num = parse_numeric(row.values[col_ppn]) if col_ppn != -1 else 0.0
                                 ppn_val = "PPN" if ppn_num and ppn_num > 0 else "NON PPN"
@@ -786,10 +798,14 @@ if menu == "Pembersihan PO":
                         
                         data_to_push = []
                         for _, r in df_to_save.iterrows():
+                            info = mapping_master_info.get(r['NAMA_BAKU'], {})
+                            kat_final = info.get('KATEGORI', '-') if r['NAMA_BAKU'] != "⚠️ BARANG BARU" else str(r.get('KATEGORI', '-')).strip().upper()
+                            det_kat_final = info.get('DETAIL KATEGORI', '-') if r['NAMA_BAKU'] != "⚠️ BARANG BARU" else str(r.get('DETAIL KATEGORI', '-')).strip().upper()
+                            
                             data_to_push.append([
                                 r['UNIT'], r['PO'], r['NO FPB'], r['TANGGAL'], r['VENDOR'], "RP", 
                                 r['ITEM_ASLI'], r['NAMA_BAKU'], r['QTY'], r['SATUAN'], r['HARGA'], r['STATUS PPN'],
-                                r['KATEGORI'], r['DETAIL KATEGORI'], r['SKU'], waktu_rekap 
+                                kat_final, det_kat_final, r['SKU'], waktu_rekap 
                             ])
                         
                         if data_to_push:
@@ -1147,4 +1163,4 @@ elif menu == "Maintenance Data":
     else: st.success("✔️ Database Sehat. Semua SKU terverifikasi.")
 
 st.markdown("---")
-st.markdown(f"<p style='text-align: center; color: #94A3B8; font-size: 12px;'>ERP Purchasing System v15.0 | Proprietary of PT Panca Budi Idaman Tbk | Created with ❤️ for Raihan Subakti<br><span style='color: #10B981; font-weight: 600;'>🟢 Live Database tersinkronisasi pada: {get_sync_time()}</span></p>", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align: center; color: #94A3B8; font-size: 12px;'>ERP Purchasing System v16.0 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti<br><span style='color: #10B981; font-weight: 600;'>🟢 Live Database tersinkronisasi pada: {get_sync_time()}</span></p>", unsafe_allow_html=True)
