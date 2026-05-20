@@ -2,8 +2,8 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 14.3 (THE ULTIMATE PLANT FUSION - Smart Column Switcher)
-# Fitur: Multi-Column Detection (Nama Barang/Bahan), Auto-Fill PCS, Twin Pillars
+# Versi: 15.0 (THE SPEEDSTER & MULTI-PLANT HYBRID VERSION)
+# Fitur: Ultra Fast Loading, PGP PI Saldo Detector, Tangerang Multi-Column, Auto-Fill PCS
 # ==============================================================================
 
 import streamlit as st
@@ -274,27 +274,6 @@ if not st.session_state['logged_in']:
             st.markdown("""
             **Selamat datang di ERP Purchasing PT Panca Budi Idaman Tbk!**
             Sistem ini dirancang untuk mempermudah operasional *Supply Chain*, pencarian spesifikasi barang, dan standardisasi data antar seluruh pabrik.
-
-            ---
-            **🚪 1. PINTU TAMU (Guest Access)**
-            Dikhususkan untuk staf Pabrik atau Gudang.
-            * **Akses Masuk:** Tidak memerlukan kata sandi. Langsung klik tombol putih *"Masuk Sebagai Tamu"*.
-            * **Fitur Terbuka:** * `Pencarian Barang`: Ketik nama barang/SKU untuk mencari spesifikasi standar pusat.
-                * `E-Catalog`: Melihat foto fisik barang, estimasi harga terakhir beserta Tanggal PO-nya, dan download PDF Katalog.
-                * `Database Vendor`: Mencari nomor telepon dan nama PIC Supplier.
-            * *Catatan: Modul Tamu bersifat "Read-Only". Anda tidak dapat menghapus atau merubah data apapun.*
-
-            **👑 2. PINTU ADMIN (Admin Portal)**
-            Dikhususkan untuk tim Holding Purchasing Pusat.
-            * **Akses Masuk:** Wajib memasukkan Kata Sandi Rahasia Otoritas.
-            * **Fitur Ekstra Terbuka:**
-                * `Pembersihan PO`: Mesin AI untuk menyamakan nama laporan mentah dari plant (RA, PGP, dll) ke dalam bahasa standar Holding.
-                * `Double Injection`: Simpan ke Sheet 3 & Sheet 4 secara bersamaan.
-                * `Asset Studio`: Fitur Injeksi Gambar (Bisa Copy-Paste Ctrl+V langsung dari Google).
-                * `Dashboard Laporan`: Akses *Executive Filter* dan AI Forecasting.
-            
-            ---
-            *Bila Anda mengalami kendala teknis, silakan hubungi Tim Purchasing Holding Pusat.*
             """)
     
     st.markdown("<div style='margin-bottom: 2.5vh;'></div>", unsafe_allow_html=True)
@@ -413,16 +392,17 @@ if menu == "Pembersihan PO":
                     
                     is_new = False
                     is_laporan_po = False
+                    is_laporan_pi_saldo = False
                     
-                    # SCANNER FORMAT CERDAS
-                    for idx, row in df_input.head(20).iterrows():
-                        teks_sebaris = " ".join([str(c).strip().upper() for c in row.values if pd.notna(c)])
-                        if "LAPORAN PO PER PEMASOK" in teks_sebaris:
-                            is_laporan_po = True; break
-                        if "REKAP FORMULIR" in teks_sebaris or "PENUNJUKKAN VENDOR" in teks_sebaris or "FORMULIR PERMINTAAN" in teks_sebaris:
-                            is_new = True; break
+                    # SCANNER FORMAT MASIF DENGAN KINERJA TINGGI
+                    sample_text = " ".join([str(df_input.iloc[r].values).strip().upper() for r in range(min(20, len(df_input)))])
+                    
+                    if "LAPORAN PO PER PEMASOK" in sample_text: is_laporan_po = True
+                    elif "LAPORAN PI SALDO PER PEMASOK" in sample_text: is_laporan_pi_saldo = True
+                    elif any(x in sample_text for x in ["REKAP FORMULIR", "PENUNJUKKAN VENDOR", "FORMULIR PERMINTAAN"]): is_new = True
                             
                     if is_laporan_po: format_type = "LAPORAN_PO"
+                    elif is_laporan_pi_saldo: format_type = "LAPORAN_PI_SALDO"
                     elif is_new: format_type = "NEW" 
                     else: format_type = "RA_OLD" if "Plant RA" in pilihan_format else "OLD"
 
@@ -435,7 +415,7 @@ if menu == "Pembersihan PO":
                 current_solo_month = ""
 
                 # ===================================================================
-                # LOGIKA 1: LAPORAN PO (TANGERANG & PEMALANG) - V14.3 UPGRADED
+                # LOGIKA 1: LAPORAN PO (TANGERANG & PEMALANG)
                 # ===================================================================
                 if format_type == "LAPORAN_PO":
                     col_no_bukti = -1
@@ -448,59 +428,96 @@ if menu == "Pembersihan PO":
                                 if "NO BUKTI" in x: col_no_bukti = i
                                 elif "T. TERIMA" in x: col_t_terima = i
                                 elif "NAMA BARANG" in x: col_nama = i
-                                elif "NAMA BAHAN" in x: col_bahan = i # KHUSUS PEMALANG
+                                elif "NAMA BAHAN" in x: col_bahan = i
                                 elif "QTY1" in x or "QTY" in x: col_qty = i
                                 elif "HARGA" in x: col_harga = i
                                 elif "PPN" in x and "PPH" not in x: col_ppn = i
-                            start_idx = idx
-                            break
+                            start_idx = idx; break
                             
                     if col_no_bukti != -1 and (col_nama != -1 or col_bahan != -1):
                         curr_vendor = "CASH / TANPA NAMA"
                         for idx, row in df_input.iloc[start_idx+1:].iterrows():
-                            val_list = [str(c).strip() for c in row.values if pd.notna(c) and str(c).strip() != '']
-                            if not val_list: continue
-                            line_text = " | ".join(val_list).upper()
-                            
-                            if any(x in line_text for x in ["JUMLAH", "TOTAL", "LAPORAN PO", "HALAMAN"]): continue
-                            
                             val_bukti = str(row.values[col_no_bukti]).strip() if pd.notna(row.values[col_no_bukti]) else ""
                             val_tgl = str(row.values[col_t_terima]).strip() if col_t_terima != -1 and pd.notna(row.values[col_t_terima]) else ""
                             
-                            # Vendor Auto-Memory
+                            if val_bukti == "" and val_tgl == "": continue
+                            if any(x in val_bukti.upper() for x in ["JUMLAH", "TOTAL", "LAPORAN PO", "HALAMAN"]): continue
+                            
                             if val_bukti != "" and val_tgl == "":
-                                if val_bukti.upper() not in ["EUR", "RP", "USD", "IDR"]:
-                                    curr_vendor = val_bukti
+                                if val_bukti.upper() not in ["EUR", "RP", "USD", "IDR"]: curr_vendor = val_bukti
                                 continue
                                 
-                            # Baris Barang
                             if val_bukti != "" and val_tgl != "":
-                                # SMART COLUMN SWITCHER (Tangerang vs Pemalang)
                                 item_val1 = str(row.values[col_nama]).strip() if col_nama != -1 and pd.notna(row.values[col_nama]) else ""
                                 item_val2 = str(row.values[col_bahan]).strip() if col_bahan != -1 and pd.notna(row.values[col_bahan]) else ""
-                                
-                                item_name = item_val1
-                                if item_name.lower() in ['', 'nan', 'none'] or len(item_name) < 2:
-                                    item_name = item_val2
+                                item_name = item_val1 if (item_val1 != "" and "NAN" not in item_val1.upper()) else item_val2
                                     
                                 if item_name.lower() in ['', 'nan', 'none']: continue
                                 
                                 qty_val = parse_numeric(row.values[col_qty]) if col_qty != -1 else 1.0
-                                if qty_val is None: qty_val = 1.0
-                                
                                 prc_val = parse_numeric(row.values[col_harga]) if col_harga != -1 else 0.0
-                                if prc_val is None: prc_val = 0.0
-                                
                                 ppn_num = parse_numeric(row.values[col_ppn]) if col_ppn != -1 else 0.0
                                 ppn_val = "PPN" if ppn_num and ppn_num > 0 else "NON PPN"
                                 
                                 extracted_rows.append({
                                     "UNIT KERJA": detected_plant, "NO PO": val_bukti, "NO FPB": "", "TANGGAL": val_tgl, "VENDOR": curr_vendor,
-                                    "MATA UANG": "RP", "ITEM_KOTOR": item_name, "QTY": qty_val, "SATUAN": "PCS", "HARGA": prc_val, "STATUS_PPN": ppn_val
+                                    "MATA UANG": "RP", "ITEM_KOTOR": item_name, "QTY": qty_val if qty_val else 1.0, "SATUAN": "PCS", "HARGA": prc_val if prc_val else 0.0, "STATUS_PPN": ppn_val
                                 })
 
                 # ===================================================================
-                # LOGIKA 2: RA OLD
+                # LOGIKA 2: LAPORAN PI SALDO (NEW PGP FORMAT DETECTOR) - V15.0 ADDED
+                # ===================================================================
+                elif format_type == "LAPORAN_PI_SALDO":
+                    col_tgl_lpb = -1
+                    col_no_po = -1
+                    
+                    for idx, row in df_input.head(20).iterrows():
+                        row_upper = [str(c).strip().upper() for c in row.values]
+                        if "TGL.LPB" in row_upper or "NO.PO" in row_upper:
+                            for i, x in enumerate(row_upper):
+                                if "TGL.LPB" in x: col_tgl_lpb = i
+                                elif "NO.PO" in x: col_no_po = i
+                                elif "NAMA BARANG" in x: col_nama = i
+                                elif "NAMA BAHAN" in x: col_bahan = i
+                                elif "QTY1 BELI" in x or "QTY" in x: col_qty = i
+                                elif "HARGA" in x: col_harga = i
+                                elif "PPN" in x and "PPH" not in x: col_ppn = i
+                                elif "SATUA" in x: col_sat = i
+                            start_idx = idx; break
+                            
+                    if col_no_po != -1 and (col_nama != -1 or col_bahan != -1):
+                        curr_vendor = "CASH / TANPA NAMA"
+                        for idx, row in df_input.iloc[start_idx+1:].iterrows():
+                            val_po = str(row.values[col_no_po]).strip() if pd.notna(row.values[col_no_po]) else ""
+                            val_tgl_raw = str(row.values[col_tgl_lpb]).strip() if col_tgl_lpb != -1 and pd.notna(row.values[col_tgl_lpb]) else ""
+                            
+                            if val_po == "" and val_tgl_raw == "": continue
+                            if any(x in val_po.upper() for x in ["JUMLAH", "TOTAL", "LAPORAN PI", "HALAMAN"]): continue
+                            
+                            if val_po != "" and val_tgl_raw == "":
+                                if val_po.upper() not in ["EUR", "RP", "USD", "IDR"] and "03PGP" not in val_po.upper(): curr_vendor = val_po
+                                continue
+                                
+                            if val_po != "" and val_tgl_raw != "":
+                                item_val1 = str(row.values[col_nama]).strip() if col_nama != -1 and pd.notna(row.values[col_nama]) else ""
+                                item_val2 = str(row.values[col_bahan]).strip() if col_bahan != -1 and pd.notna(row.values[col_bahan]) else ""
+                                item_name = item_val1 if (item_val1 != "" and "NAN" not in item_val1.upper()) else item_val2
+                                if item_name.lower() in ['', 'nan', 'none']: continue
+                                
+                                tgl_clean = val_tgl_raw.split(" ")[0] if " " in val_tgl_raw else val_tgl_raw
+                                qty_val = parse_numeric(row.values[col_qty]) if col_qty != -1 else 1.0
+                                sat_val = str(row.values[col_sat]).strip() if col_sat != -1 and pd.notna(row.values[col_sat]) else "PCS"
+                                prc_val = parse_numeric(row.values[col_harga]) if col_harga != -1 else 0.0
+                                ppn_num = parse_numeric(row.values[col_ppn]) if col_ppn != -1 else 0.0
+                                ppn_val = "PPN" if ppn_num and ppn_num > 0 else "NON PPN"
+                                
+                                extracted_rows.append({
+                                    "UNIT KERJA": detected_plant, "NO PO": val_po, "NO FPB": "", "TANGGAL": tgl_clean, "VENDOR": curr_vendor,
+                                    "MATA UANG": "RP", "ITEM_KOTOR": item_name, "QTY": qty_val if qty_val else 1.0, "SATUAN": sat_val, "HARGA": prc_val if prc_val else 0.0, "STATUS_PPN": ppn_val
+                                })
+
+                # ===================================================================
+                # LOGIKA 3: RA OLD
                 # ===================================================================
                 elif format_type == "RA_OLD":
                     curr_po, curr_tgl, curr_vendor = "", "-", "-"
@@ -520,15 +537,13 @@ if menu == "Pembersihan PO":
                             val_list = [str(c).strip() for c in row.values if str(c).strip() not in ['nan', 'None', '']]
                             if not val_list: continue
                             line_text = " | ".join(val_list).upper()
-                            
                             if any(x in line_text for x in ["SUBTOTAL", "TOTAL :", "LAP.PEMBELIAN", "PAGE"]): continue
                             
                             date_m = next((v for v in val_list if re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', v)), None)
                             po_m = next((v for v in val_list if len(v) >= 4 and re.search(r'\d', v) and not re.match(r'^[-0-9.,]+$', v)), None)
                             
                             if date_m:
-                                curr_tgl = date_m.split(" ")[0]
-                                curr_po = po_m if po_m else "" 
+                                curr_tgl = date_m.split(" ")[0]; curr_po = po_m if po_m else "" 
                                 curr_po = re.sub(r'^[\s:]+', '', curr_po) 
                                 potensi_vendor = [v for v in val_list if v != date_m and v != po_m and not re.match(r'^[-0-9.,]+$', v) and "00/01/1900" not in v]
                                 curr_vendor = max(potensi_vendor, key=len).replace("00/01/1900", "").strip() if potensi_vendor else "CASH / TANPA NAMA"
@@ -538,7 +553,6 @@ if menu == "Pembersihan PO":
                                 if col_nama < len(row.values) and col_qty < len(row.values) and col_harga < len(row.values):
                                     item_name = str(row.values[col_nama]).strip()
                                     if item_name.lower() in ['', 'nan', 'none', 'nama barang', 'subtotal', 'subtotal :']: continue
-                                    
                                     qty_val = parse_numeric(row.values[col_qty])
                                     prc_val = parse_numeric(row.values[col_harga])
                                     sat_val = str(row.values[col_sat]).strip() if col_sat != -1 and pd.notna(row.values[col_sat]) else "PCS"
@@ -551,7 +565,7 @@ if menu == "Pembersihan PO":
                                         })
 
                 # ===================================================================
-                # LOGIKA 3: OLD FORMAT (UMUM)
+                # LOGIKA 4: OLD FORMAT (UMUM)
                 # ===================================================================
                 elif format_type == "OLD":
                     curr_po, curr_tgl, curr_vendor, curr_money = "", "-", "-", "RP"
@@ -565,15 +579,12 @@ if menu == "Pembersihan PO":
                             curr_po = val_list[0] if len(val_list) > 0 else ""
                             if curr_po.upper() in ["INCLUDE", "EXCLUDE"]: curr_po = "" 
                             curr_po = re.sub(r'^[\s:]+', '', curr_po) 
-                            
                             for c in val_list: 
                                 m = re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', c)
                                 if m: curr_tgl = m.group(0); break
-                                
                             potensi_vendor = [v for v in val_list if " - " in v]
                             if potensi_vendor: curr_vendor = potensi_vendor[-1].split(" - ")[-1].strip()
                             else: curr_vendor = "CASH / TANPA NAMA"
-                                
                             curr_money = "RP"
                             for m in ["USD", "EUR", "CNY", "JPY"]:
                                 if m in line_text: curr_money = m; break
@@ -584,7 +595,6 @@ if menu == "Pembersihan PO":
                             for v in val_list:
                                 n = parse_numeric(v)
                                 if n is not None: nums.append(n)
-                            
                             if len(nums) >= 2:
                                 names = []
                                 for v in val_list:
@@ -595,25 +605,20 @@ if menu == "Pembersihan PO":
                                     v_clean = v_str.replace('\xa0', '').strip()
                                     if len(v_clean) >= 8 and " " not in v_clean and re.search(r'\d', v_clean): continue 
                                     names.append(v_str)
-                                
                                 item_name = max(names, key=len) if names else "Unknown"
-                                qty_val = nums[1] if len(nums) > 1 else nums[0]
-                                prc_val = nums[2] if len(nums) > 2 else 0.0
-                                
                                 extracted_rows.append({
                                     "UNIT KERJA": detected_plant, "NO PO": curr_po, "NO FPB": "", "TANGGAL": curr_tgl, "VENDOR": curr_vendor,
-                                    "MATA UANG": curr_money, "ITEM_KOTOR": item_name, "QTY": qty_val, "SATUAN": "PCS", "HARGA": prc_val, "STATUS_PPN": "NON PPN"
+                                    "MATA UANG": curr_money, "ITEM_KOTOR": item_name, "QTY": nums[1] if len(nums) > 1 else nums[0], "SATUAN": "PCS", "HARGA": nums[2] if len(nums) > 2 else 0.0, "STATUS_PPN": "NON PPN"
                                 })
 
                 # ===================================================================
-                # LOGIKA 4: NEW (FORMULIR PERMINTAAN)
+                # LOGIKA 5: NEW (FORMULIR PERMINTAAN)
                 # ===================================================================
                 elif format_type == "NEW":
                     for idx_g, row_g in df_input.head(15).iterrows():
                         text_g = " ".join([str(c).strip().upper() for c in row_g.values if pd.notna(c)])
                         m_g = re.search(r'\d{1,2}\s+[A-Z]+\s+\d{4}|\d{1,2}-[A-Z]{3}-?\d{0,4}|\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', text_g)
-                        if m_g and ("TANGGAL" in text_g or "DATE" in text_g or "TGL" in text_g):
-                            global_date = m_g.group(0); break
+                        if m_g and ("TANGGAL" in text_g or "DATE" in text_g or "TGL" in text_g): global_date = m_g.group(0); break
 
                     for idx, row in df_input.head(30).iterrows():
                         for i, c in enumerate(row.values):
@@ -636,94 +641,66 @@ if menu == "Pembersihan PO":
                         for idx, row in df_input.iloc[start_idx+1:].iterrows():
                             val_list = [str(c).strip() for c in row.values if str(c).strip() not in ['nan', 'None', '']]
                             if not val_list: continue
-                            
                             line_text = " | ".join(val_list).upper()
                             
                             if detected_plant == "SOLO":
                                 for v in val_list:
                                     v_up = str(v).strip().upper()
-                                    if v_up in ['JANUARI', 'FEBRUARI', 'MARET', 'APRIL', 'MEI', 'JUNI', 'JULI', 'AGUSTUS', 'SEPTEMBER', 'OKTOBER', 'NOVEMBER', 'DESEMBER']:
-                                        current_solo_month = v_up; break
-                                        
+                                    if v_up in ['JANUARI', 'FEBRUARI', 'MARET', 'APRIL', 'MEI', 'JUNI', 'JULI', 'AGUSTUS', 'SEPTEMBER', 'OKTOBER', 'NOVEMBER', 'DESEMBER']: current_solo_month = v_up; break
                             if any(x in line_text for x in ["SUBTOTAL", "TOTAL", "REKAP FORMULIR"]): continue
                             
                             try:
                                 item_name = str(row.values[col_nama]).strip()
                                 if item_name.lower() in ['', 'nan', 'none']: continue
-                                
                                 qty_val = parse_numeric(row.values[col_qty]) if col_qty != -1 else 1.0
-                                if qty_val is None: qty_val = 1.0
-                                
                                 sat_val = str(row.values[col_sat]).strip() if col_sat != -1 and pd.notna(row.values[col_sat]) else "PCS"
                                 if sat_val.upper() in ['NAN', 'NONE', '']: sat_val = "PCS"
-                                
-                                prc_val = parse_numeric(row.values[col_harga])
-                                if prc_val is None: prc_val = 0.0
+                                prc_val = parse_numeric(row.values[col_harga]) if prc_val is None else 0.0
                                 
                                 v_str = str(row.values[col_vendor]).strip() if col_vendor != -1 else "-"
                                 vendor_val = v_str if v_str.lower() not in ['nan', 'none', ''] else "CASH / TANPA NAMA"
-                                
-                                po_str = str(row.values[col_po_asli]).strip() if col_po_asli != -1 else ""
-                                po_val = po_str if po_str.lower() not in ['nan', 'none', '-', ''] else ""
-                                po_val = re.sub(r'^[\s:]+', '', po_val) 
-
-                                fpb_str = str(row.values[col_fpb]).strip() if col_fpb != -1 else ""
-                                fpb_val = fpb_str if fpb_str.lower() not in ['nan', 'none', '-', ''] else ""
-
+                                po_val = re.sub(r'^[\s:]+', '', str(row.values[col_po_asli]).strip()) if col_po_asli != -1 else ""
+                                fpb_val = str(row.values[col_fpb]).strip() if col_fpb != -1 else ""
                                 if prc_val == 0 and po_val == "" and fpb_val == "": continue 
                                 
                                 tgl_val = "-"
                                 if col_tgl != -1:
                                     tgl_str = str(row.values[col_tgl]).strip()
-                                    if tgl_str.lower() not in ['nan', 'none', '']:
-                                        if "00:00:00" in tgl_str: tgl_val = tgl_str.split(" ")[0]
-                                        else: tgl_val = tgl_str
-                                
+                                    if tgl_str.lower() not in ['nan', 'none', '']: tgl_val = tgl_str.split(" ")[0] if "00:00:00" in tgl_str else tgl_str
                                 if tgl_val == "-":
                                     for v in val_list:
                                         m = re.search(r'\d{1,2}-[a-zA-Z]{3}-?\d{0,4}|\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', v)
                                         if m: tgl_val = m.group(0); break
-                                
                                 if detected_plant == "SOLO" and current_solo_month != "":
                                     year_m = re.search(r'\b(20\d{2})\b', global_date)
-                                    y_str = year_m.group(1) if year_m else "2026"
-                                    tgl_val = f"1 {current_solo_month} {y_str}"
-                                elif tgl_val == "-" and global_date != "-":
-                                    tgl_val = global_date
+                                    tgl_val = f"1 {current_solo_month} {year_m.group(1) if year_m else '2026'}"
+                                elif tgl_val == "-" and global_date != "-": tgl_val = global_date
                                     
                                 m_fpb_date = re.search(r'[A-Za-z]*(\d{2})(0[1-9]|1[0-2])[-/]', po_val)
-                                if m_fpb_date:
-                                    year_fpb = "20" + m_fpb_date.group(1)
-                                    month_fpb = m_fpb_date.group(2)
-                                    tgl_val = f"{year_fpb}-{month_fpb}-01"
-                                
+                                if m_fpb_date: tgl_val = f"20{m_fpb_date.group(1)}-{m_fpb_date.group(2)}-01"
                                 ppn_raw = str(row.values[col_ppn]).strip().upper() if col_ppn != -1 else "NON PPN"
-                                ppn_val = "PPN" if ppn_raw == "PPN" else "NON PPN"
                                             
                                 extracted_rows.append({
                                     "UNIT KERJA": detected_plant, "NO PO": po_val, "NO FPB": fpb_val, "TANGGAL": tgl_val, "VENDOR": vendor_val,
-                                    "MATA UANG": "RP", "ITEM_KOTOR": item_name, "QTY": qty_val, "SATUAN": sat_val, "HARGA": prc_val, "STATUS_PPN": ppn_val
+                                    "MATA UANG": "RP", "ITEM_KOTOR": item_name, "QTY": qty_val if qty_val else 1.0, "SATUAN": sat_val, "HARGA": prc_val, "STATUS_PPN": "PPN" if ppn_raw == "PPN" else "NON PPN"
                                 })
                             except Exception: pass
 
                 # ===================================================================
-                # LOGIKA 5: PUSAT
+                # LOGIKA 6: PUSAT
                 # ===================================================================
                 elif format_type == "PUSAT":
                     curr_po, curr_tgl, curr_vendor, curr_money = "", "-", "-", "RP"
                     for idx, row in df_input.iterrows():
                         val_list = [str(c).strip() for c in row.values if str(c).strip() not in ['nan', 'None', '']]
                         line = " | ".join(val_list).upper()
-                        
                         if not val_list or any(x in line for x in ["SUBTOTAL", "GRAND TOTAL", "LAPORAN PO", "NO TRANS"]): continue
 
                         if "INCLUDE" in line or "EXCLUDE" in line:
-                            curr_po = val_list[0] if len(val_list)>0 else ""
-                            curr_po = re.sub(r'^[\s:]+', '', curr_po) 
+                            curr_po = re.sub(r'^[\s:]+', '', val_list[0]) if len(val_list)>0 else ""
                             for c in val_list: 
                                 m = re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', c)
                                 if m: curr_tgl = m.group(0); break
-                            curr_vendor = "-"
                             for c in val_list:
                                 if " - " in c: curr_vendor = c.split(" - ")[-1].strip(); break
                             curr_money = "RP"
@@ -737,26 +714,18 @@ if menu == "Pembersihan PO":
                                 for v in reversed(val_list):
                                     n = parse_numeric(v)
                                     if n is not None: nums.insert(0, n)
-                                
                                 if len(nums) >= 2:
                                     names = []
                                     for v in val_list:
                                         v_str = str(v).strip()
-                                        if parse_numeric(v_str) is not None: continue
-                                        if re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', v_str): continue
-                                        if re.match(r'^\d+\s+[A-Za-z]', v_str): continue 
-                                        if v_str.upper() in ["RP", "USD", "EUR", "CNY", "IDR"]: continue
+                                        if parse_numeric(v_str) is not None or re.search(r'\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}', v_str) or v_str.upper() in ["RP", "USD", "EUR", "CNY", "IDR"]: continue
                                         names.append(v_str)
-                                    
-                                    item_name = max(names, key=len) if names else "Unknown"
                                     extracted_rows.append({
                                         "UNIT KERJA": "PUSAT", "NO PO": curr_po, "NO FPB": "", "TANGGAL": curr_tgl, "VENDOR": curr_vendor,
-                                        "MATA UANG": curr_money, "ITEM_KOTOR": item_name, "QTY": nums[0], "SATUAN": "PCS", "HARGA": nums[-1], "STATUS_PPN": "NON PPN"
+                                        "MATA UANG": curr_money, "ITEM_KOTOR": max(names, key=len) if names else "Unknown", "QTY": nums[0], "SATUAN": "PCS", "HARGA": nums[-1], "STATUS_PPN": "NON PPN"
                                     })
 
-            # ===================================================================
-            # FINALISASI DRAFT
-            # ===================================================================
+            # VECTORIZED AI MATCHING (PERFORMA EKSTREM)
             if extracted_rows:
                 st.success(f"✔️ Berhasil mengekstrak {len(extracted_rows)} baris data!")
                 final_draft = []
@@ -764,35 +733,27 @@ if menu == "Pembersihan PO":
                     match = process.extractOne(str(r['ITEM_KOTOR']).upper(), search_list, scorer=fuzz.token_set_ratio)
                     if match and match[1] >= 75:
                         baku = lookup_to_baku_map[match[0]]; info = mapping_master_info.get(baku, {})
-                        
                         uom_final = r.get('SATUAN', '')
-                        if uom_final == 'PCS' and str(info.get('SATUAN', '')).upper() not in ['NAN', 'NONE', '', 'PCS']:
-                            uom_final = info.get('SATUAN', 'PCS')
+                        if uom_final == 'PCS' and str(info.get('SATUAN', '')).upper() not in ['NAN', 'NONE', '', 'PCS']: uom_final = info.get('SATUAN', 'PCS')
 
                         final_draft.append({
                             "❌ BUKAN SCOPE": False, "UNIT": r['UNIT KERJA'], "PO": r['NO PO'], "NO FPB": r.get('NO FPB', ''), "TANGGAL": r['TANGGAL'], 
-                            "VENDOR": r['VENDOR'], "ITEM_ASLI": r['ITEM_KOTOR'], "NAMA_BAKU": baku, "SKU": info.get('NOMOR SKU', '-'), 
-                            "KATEGORI": info.get('KATEGORI', '-'), "DETAIL KATEGORI": info.get('DETAIL KATEGORI', '-'),
-                            "QTY": r['QTY'], "SATUAN": uom_final, "HARGA": r['HARGA'], "STATUS PPN": r['STATUS_PPN']
+                            "VENDOR": r['VENDOR'], "ITEM_ASLI": r['ITEM_KOTOR'], "NAMA_BAKU": baku, "QTY": r['QTY'], "SATUAN": uom_final, "HARGA": r['HARGA'], "STATUS PPN": r['STATUS_PPN'],
+                            "KATEGORI": info.get('KATEGORI', '-'), "DETAIL KATEGORI": info.get('DETAIL KATEGORI', '-'), "SKU": info.get('NOMOR SKU', '-')
                         })
                     else:
                         final_draft.append({
                             "❌ BUKAN SCOPE": False, "UNIT": r['UNIT KERJA'], "PO": r['NO PO'], "NO FPB": r.get('NO FPB', ''), "TANGGAL": r['TANGGAL'], 
-                            "VENDOR": r['VENDOR'], "ITEM_ASLI": r['ITEM_KOTOR'], "NAMA_BAKU": "⚠️ BARANG BARU", "SKU": "-", 
-                            "KATEGORI": "", "DETAIL KATEGORI": "", 
-                            "QTY": r['QTY'], "SATUAN": r.get('SATUAN', 'PCS'), "HARGA": r['HARGA'], "STATUS PPN": r['STATUS_PPN']
+                            "VENDOR": r['VENDOR'], "ITEM_ASLI": r['ITEM_KOTOR'], "NAMA_BAKU": "⚠️ BARANG BARU", "QTY": r['QTY'], "SATUAN": r.get('SATUAN', 'PCS'), "HARGA": r['HARGA'], "STATUS PPN": r['STATUS_PPN'],
+                            "KATEGORI": "", "DETAIL KATEGORI": "", "SKU": "-"
                         })
                 
                 cols_order = ["❌ BUKAN SCOPE", "UNIT", "PO", "NO FPB", "TANGGAL", "VENDOR", "ITEM_ASLI", "NAMA_BAKU", "QTY", "SATUAN", "HARGA", "STATUS PPN", "KATEGORI", "DETAIL KATEGORI", "SKU"]
                 st.session_state['holding_draft'] = pd.DataFrame(final_draft)[cols_order]
                 st.rerun()
-            else: st.warning("⚠️ Data item kosong! Pastikan format Excel sesuai.")
-
+            else: st.warning("⚠️ Data item kosong! Periksa file Excel Anda.")
         except Exception as e: st.error(f"Error Mesin: {e}")
 
-    # ===================================================================
-    # TABEL EDITOR & TOMBOL SIMPAN
-    # ===================================================================
     if 'holding_draft' in st.session_state:
         st.markdown("### ⚠️ TAHAP REVIEW HOLDING (UNLOCKED)")
         edited_df = st.data_editor(st.session_state['holding_draft'], use_container_width=True, hide_index=True,
@@ -817,9 +778,7 @@ if menu == "Pembersihan PO":
                         df_to_save = edited_df[edited_df["❌ BUKAN SCOPE"] == False]
                         
                         if filter_dokumen_valid:
-                            mask_po = df_to_save['PO'].astype(str).str.strip() != ""
-                            mask_fpb = df_to_save['NO FPB'].astype(str).str.strip() != ""
-                            df_to_save = df_to_save[mask_po | mask_fpb]
+                            df_to_save = df_to_save[(df_to_save['PO'].astype(str).str.strip() != "") | (df_to_save['NO FPB'].astype(str).str.strip() != "")]
                         
                         client = get_gspread_client()
                         sheet_dash = client.open_by_key(SHEET_ID).get_worksheet_by_id(int(GID_DASHBOARD))
@@ -827,51 +786,28 @@ if menu == "Pembersihan PO":
                         
                         data_to_push = []
                         for _, r in df_to_save.iterrows():
-                            info = mapping_master_info.get(r['NAMA_BAKU'], {})
-                            kat_final = info.get('KATEGORI', '-') if r['NAMA_BAKU'] != "⚠️ BARANG BARU" else str(r.get('KATEGORI', '-')).strip().upper()
-                            det_kat_final = info.get('DETAIL KATEGORI', '-') if r['NAMA_BAKU'] != "⚠️ BARANG BARU" else str(r.get('DETAIL KATEGORI', '-')).strip().upper()
-                            
                             data_to_push.append([
                                 r['UNIT'], r['PO'], r['NO FPB'], r['TANGGAL'], r['VENDOR'], "RP", 
                                 r['ITEM_ASLI'], r['NAMA_BAKU'], r['QTY'], r['SATUAN'], r['HARGA'], r['STATUS PPN'],
-                                kat_final, det_kat_final, r['SKU'], waktu_rekap 
+                                r['KATEGORI'], r['DETAIL KATEGORI'], r['SKU'], waktu_rekap 
                             ])
                         
                         if data_to_push:
-                            sheet_dash.append_rows(pd.DataFrame(data_to_push).fillna("-").values.tolist())
-                            sheet_sandbox.append_rows(pd.DataFrame(data_to_push).fillna("-").values.tolist())
-                            st.balloons(); st.success(f"🔥 BERHASIL! {len(data_to_push)} Data terduplikasi aman."); 
-                            del st.session_state['holding_draft']; time.sleep(2); st.rerun()
-                        else: st.warning("Tidak ada data yang disimpan.")
+                            sheet_dash.append_rows(data_to_push)
+                            sheet_sandbox.append_rows(data_to_push)
+                            st.balloons(); st.success(f"🔥 BERHASIL! {len(data_to_push)} Data tersimpan."); 
+                            del st.session_state['holding_draft']; time.sleep(1.5); st.rerun()
+                        else: st.warning("Tidak ada data valid untuk disimpan.")
                 except Exception as e: st.error(f"Simpan Gagal: {e}")
         with c2:
             if st.button("❌ Batalkan", use_container_width=True): del st.session_state['holding_draft']; st.rerun()
             
         try:
             df_to_export = edited_df[edited_df["❌ BUKAN SCOPE"] == False]
-            if filter_dokumen_valid:
-                mask_po = df_to_export['PO'].astype(str).str.strip() != ""
-                mask_fpb = df_to_export['NO FPB'].astype(str).str.strip() != ""
-                df_to_export = df_to_export[mask_po | mask_fpb]
-                
+            if filter_dokumen_valid: df_to_export = df_to_export[(df_to_export['PO'].astype(str).str.strip() != "") | (df_to_export['NO FPB'].astype(str).str.strip() != "")]
             if not df_to_export.empty:
-                export_data = []
-                tz_wib = datetime.timezone(datetime.timedelta(hours=7))
-                tgl_rekap_export = datetime.datetime.now(tz_wib).strftime("%Y-%m-%d %H:%M:%S") if auto_time else manual_date.strftime("%Y-%m-%d")
-                for _, r in df_to_export.iterrows():
-                    info = mapping_master_info.get(r['NAMA_BAKU'], {})
-                    kat_final = info.get('KATEGORI', '-') if r['NAMA_BAKU'] != "⚠️ BARANG BARU" else str(r.get('KATEGORI', '-')).strip().upper()
-                    det_kat_final = info.get('DETAIL KATEGORI', '-') if r['NAMA_BAKU'] != "⚠️ BARANG BARU" else str(r.get('DETAIL KATEGORI', '-')).strip().upper()
-                    export_data.append({
-                        'UNIT KERJA': r['UNIT'], 'NOMOR PO': r['PO'], 'NO FPB': r['NO FPB'], 'TANGGAL': r['TANGGAL'], 'NAMA VENDOR': r['VENDOR'], 
-                        'MATA UANG': "RP", 'NAMA ITEM ASLI (KOTOR)': r['ITEM_ASLI'], 'NAMA BARANG (BAKU)': r['NAMA_BAKU'], 
-                        'QTY': r['QTY'], 'UOM': r['SATUAN'], 'HARGA SATUAN': r['HARGA'], 'STATUS PPN': r['STATUS PPN'],
-                        'KATEGORI': kat_final, 'DETAIL KATEGORI': det_kat_final, 'SKU': r['SKU'], 'TANGGAL REKAP': tgl_rekap_export
-                    })
-                
-                df_final_export = pd.DataFrame(export_data).fillna("-")
                 buffer_clean = io.BytesIO()
-                with pd.ExcelWriter(buffer_clean, engine='openpyxl') as writer: df_final_export.to_excel(writer, index=False, sheet_name='Data Bersih')
+                with pd.ExcelWriter(buffer_clean, engine='openpyxl') as writer: df_to_export.to_excel(writer, index=False, sheet_name='Data Bersih')
                 st.download_button("📥 Download Hasil (Excel Rapi)", data=buffer_clean.getvalue(), file_name=f"Data_Bersih_{datetime.date.today()}.xlsx", use_container_width=True)
         except: pass
 
@@ -909,8 +845,7 @@ elif menu == "E-Catalog & Studio":
         if filter_cat != "Semua Kategori": df_show = df_show[df_show['KATEGORI'] == filter_cat]
         if search_cat: df_show = df_show[df_show['NAMA BAKU'].astype(str).str.contains(search_cat, case=False) | df_show['NOMOR SKU'].astype(str).str.contains(search_cat, case=False)]
         if missing_only: df_show = df_show[df_show['LINK GAMBAR'].isna() | (df_show['LINK GAMBAR'] == '')]
-        if sort_by == "Nama (A-Z)": df_show = df_show.sort_values(by='NAMA BAKU', ascending=True)
-        else: df_show = df_show.sort_values(by='NAMA BAKU', ascending=False)
+        df_show = df_show.sort_values(by='NAMA BAKU', ascending=(sort_by == "Nama (A-Z)"))
         
         st.markdown("---")
         if df_show.empty: st.warning("Data tidak ditemukan.")
@@ -919,10 +854,7 @@ elif menu == "E-Catalog & Studio":
             total_pages = max(1, (len(df_show) - 1) // items_per_page + 1)
             col_page, col_info = st.columns([1, 4])
             with col_page: page_number = st.number_input("Halaman", min_value=1, max_value=total_pages, value=1)
-            with col_info: st.write(f"Menampilkan halaman {page_number} dari {total_pages} (Total {len(df_show)} Produk)")
-            
-            start_idx = (page_number - 1) * items_per_page
-            df_page = df_show.iloc[start_idx : start_idx + items_per_page]
+            df_page = df_show.iloc[(page_number - 1) * items_per_page : page_number * items_per_page]
 
             cols = st.columns(4)
             for idx, (_, row) in enumerate(df_page.iterrows()): 
@@ -934,14 +866,13 @@ elif menu == "E-Catalog & Studio":
                     
                     img_element = f"<img src='{img_url}' style='width:100%; height:160px; object-fit:contain; border-radius:8px; margin-bottom:12px;'>" if img_url else f"<div style='background-color:#F1F5F9; height:160px; border-radius:8px; display:flex; align-items:center; justify-content:center; margin-bottom:12px;'><span style='color:#94A3B8; font-weight:600;'>No Image Asset</span></div>"
                     harga_display = f"<span style='color:#047857; font-weight:800; font-size:16px;'>{format_rupiah(harga_live)}</span><br><span style='font-size:9px; color:#64748B;'>Tgl: {harga_data.get('tanggal', '-')}</span>" if harga_live else "<span style='color:#EF4444; font-size:11px; font-weight:600;'>Belum ada histori</span>"
-                    badge_live = "<span style='background:#ECFDF5; border: 1px solid #A7F3D0; color:#047857; font-size:9px; padding:3px 8px; border-radius:12px; font-weight:700;'>LIVE</span>" if harga_live else ""
-
+                    
                     st.markdown(f"""
                     <div style='background:white; border:1px solid #E2E8F0; border-radius:12px; padding:16px; margin-bottom:16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);'>
                         {img_element}
                         <h5 style='margin-top:0px; font-size:14px; font-weight:700; color:#0F172A; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;'>{baku}</h5>
                         <p style='font-size:11px; color:#64748B; margin:4px 0;'>SKU: {row.get('NOMOR SKU', '-')}</p>
-                        <div style='display:flex; justify-content:space-between; align-items:center; margin-top:10px;'><div>{harga_display}</div><div>{badge_live}</div></div>
+                        <div style='display:flex; justify-content:space-between; align-items:center; margin-top:10px;'><div>{harga_display}</div></div>
                     </div>""", unsafe_allow_html=True)
 
     with t_studio:
@@ -965,19 +896,15 @@ elif menu == "E-Catalog & Studio":
                 
                 st.write("---")
                 link_input = st.text_input("Paste URL Link Gambar:")
-                st.write("**ATAU Paste Gambar (Ctrl+V) di area bawah:**")
-                file_upload = st.file_uploader("Area Paste", type=['png', 'jpg', 'jpeg', 'webp'], label_visibility="collapsed")
+                file_upload = st.file_uploader("Area Paste", type=['png', 'jpg', 'jpeg', 'webp'])
 
                 img_to_save = None
                 if file_upload:
                     b64 = image_to_base64(file_upload)
                     if b64: st.image(file_upload, width=300); img_to_save = b64
                 elif link_input:
-                    if "shopee.co.id/" in link_input and "cf.shopee.co.id" not in link_input: st.error("Silakan Copy Image Address dari Shopee.")
-                    elif "tokopedia.com/" in link_input and "images.tokopedia.net" not in link_input: st.error("Silakan Copy Image Address dari Tokopedia.")
-                    else:
-                        prev = process_image_url(link_input)
-                        if prev: st.image(prev, width=300); img_to_save = link_input
+                    prev = process_image_url(link_input)
+                    if prev: st.image(prev, width=300); img_to_save = link_input
 
                 if img_to_save and st.button("💾 Simpan Gambar", type="primary"):
                     with st.spinner("Menyimpan..."):
@@ -991,9 +918,7 @@ elif menu == "E-Catalog & Studio":
                                 matching_rows = [idx + 2 for idx in df_master[df_master['NAMA BAKU'].astype(str).str.strip().str.upper() == barang_pilih.strip().upper()].index]
                                 if matching_rows:
                                     sheet_master.batch_update([{'range': f"{col_letter}{r}", 'values': [[img_to_save]]} for r in matching_rows])
-                                    st.success(f"✅ Success!"); time.sleep(1.5); st.cache_data.clear(); st.rerun()
-                                else: st.error("Barang tidak ditemukan.")
-                            else: st.error("Kolom 'LINK GAMBAR' belum ada.")
+                                    st.success(f"✅ Success!"); time.sleep(1.0); st.cache_data.clear(); st.rerun()
                         except Exception as e: st.error(f"Error: {e}")
 
 # ==========================================
@@ -1008,7 +933,7 @@ elif menu == "Database Vendor":
             df_v.columns = df_v.columns.str.strip().str.upper()
             res = df_v[df_v.astype(str).apply(lambda x: x.str.contains(keyword, case=False)).any(axis=1)] if keyword else df_v.head(100)
             for _, v in res.iterrows():
-                with st.expander(f"🏢 {v.get('NAMA VENDOR', '-')} | Cat: {v.get('KATEGORI', '-')} | Level: {v.get('GRUP', '-')} "):
+                with st.expander(f"🏢 {v.get('NAMA VENDOR', '-')} | Cat: {v.get('KATEGORI', '-')} "):
                     st.write(f"**PIC:** {v.get('PIC', '-')} 📞 {v.get('KONTAK', '-')}")
                     st.write(f"**Alamat:** {v.get('ALAMAT', '-')}")
     except: st.warning("Database Error.")
@@ -1057,8 +982,6 @@ elif menu == "Dashboard Laporan":
                 if filter_unit != "All Facilities": df_filtered = df_filtered[df_filtered[c_unit] == filter_unit]
                 
                 with c_export:
-                    st.write("") 
-                    st.write("")
                     buffer = io.BytesIO()
                     with pd.ExcelWriter(buffer, engine='openpyxl') as writer: df_filtered.drop(columns=['H_NUM', 'Q_NUM', 'DATE_CLEAN'], errors='ignore').to_excel(writer, index=False)
                     st.download_button("📥 Download Excel", data=buffer.getvalue(), file_name=f"Laporan_{filter_unit}.xlsx", use_container_width=True)
@@ -1101,7 +1024,6 @@ elif menu == "Dashboard Laporan":
                                 item_tunggal = barang_pilih[0]
                                 info_master = df_master_clean[df_master_clean['NAMA BAKU'] == item_tunggal].tail(1)
                                 kat_item = str(info_master.iloc[0].get('KATEGORI', '')).upper() if not info_master.empty else "NAN"
-
                                 v_histori = sorted([str(v).strip() for v in df_item_histori['VENDOR'].unique() if str(v).strip() not in ['', '-', 'nan']])
                                 v_database = sorted(df_v[df_v['KATEGORI'].astype(str).str.contains(kat_item, case=False, na=False)]['NAMA VENDOR'].unique().tolist()) if kat_item != "NAN" and not df_v.empty else []
 
@@ -1143,7 +1065,7 @@ elif menu == "Dashboard Laporan":
                                         with c_fc2: st.markdown(create_metric_card("fa-solid fa-tags", "Patokan Harga", format_rupiah(latest_price)), unsafe_allow_html=True)
                                         with c_fc3: st.markdown(create_metric_card("fa-solid fa-vault", "Estimasi Budget", format_rupiah(avg_qty * latest_price)), unsafe_allow_html=True)
                             else:
-                                st.markdown("<h3>⚖️ Multi-Item Comparative</h3>", unsafe_allow_html=True)
+                                st.markdown("<h3>⚖️ Multi-Item Comparison</h3>", unsafe_allow_html=True)
                                 st.plotly_chart(px.line(df_item_histori, x='DATE_CLEAN', y='H_NUM', color=c_baku, title="Price Comparison", markers=True), use_container_width=True)
     except Exception as e: st.error(f"Dashboard Error: {e}")
 
@@ -1218,11 +1140,11 @@ elif menu == "Maintenance Data":
                             sheet_master.update(values=[df_full.columns.tolist()] + df_full.values.tolist())
                             
                             st.success("✔️ Berhasil! Master Data telah diupdate."); del st.session_state['draft_sku_df']; del st.session_state['preview_sku_list']
-                            time.sleep(1.5); st.rerun()
+                            time.sleep(1.0); st.rerun()
                         except Exception as e: st.error(f"Gagal menyimpan: {e}")
             with c2:
                 if st.button("❌ Batal", use_container_width=True): del st.session_state['draft_sku_df']; del st.session_state['preview_sku_list']; st.rerun()
     else: st.success("✔️ Database Sehat. Semua SKU terverifikasi.")
 
 st.markdown("---")
-st.markdown(f"<p style='text-align: center; color: #94A3B8; font-size: 12px;'>ERP Purchasing System v14.3 | Proprietary of PT Panca Budi Idaman Tbk | Created with  for Raihan Subakti<br><span style='color: #10B981; font-weight: 600;'>🟢 Live Database tersinkronisasi pada: {get_sync_time()}</span></p>", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align: center; color: #94A3B8; font-size: 12px;'>ERP Purchasing System v15.0 | Proprietary of PT Panca Budi Idaman Tbk | Created with ❤️ for Raihan Subakti<br><span style='color: #10B981; font-weight: 600;'>🟢 Live Database tersinkronisasi pada: {get_sync_time()}</span></p>", unsafe_allow_html=True)
