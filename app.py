@@ -2,8 +2,8 @@
 # SISTEM ERP PURCHASING - PT PANCA BUDI IDAMAN TBK
 # Developer Helper: Gemini AI
 # User: Raihan Subakti (Regional Purchasing)
-# Versi: 16.0 (THE SPEEDSTER & MULTI-PLANT HYBRID VERSION)
-# Fitur: Ultra Fast Loading, PGP PI Saldo Detector, Auto-Fill PCS, Unlocked Master
+# Versi: 17.2 (THE HYPER-CACHE & VENDOR ANALYTICS VERSION)
+# Fitur: Ultra Fast Loading, Vendor Drill-Down, Multi-Plant Auto-Detect, Auto-Fill PCS
 # ==============================================================================
 
 import streamlit as st
@@ -80,7 +80,7 @@ def get_gspread_client():
     return gspread.authorize(creds)
 
 @st.cache_data(ttl=120) 
-def load_data(gid):
+def load_raw_data(gid):
     url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={gid}"
     return pd.read_csv(url)
 
@@ -206,53 +206,64 @@ def col_num_to_letter(n):
     return string
 
 # ==========================================
-# 4. LOAD CORE DATA & DYNAMIC PRICING LOGIC
+# 4. LOAD CORE DATA & DYNAMIC PRICING LOGIC (HYPER-CACHED)
 # ==========================================
-try:
-    df_master = load_data(GID_MASTER)
-    df_master.columns = df_master.columns.str.strip().str.upper()
-    df_master = df_master.dropna(subset=['NAMA BAKU'])
-    
-    c_lvl = next((c for c in df_master.columns if 'LEVEL' in c or 'KELOMPOK' in c), 'LEVEL')
-    if c_lvl in df_master.columns: df_master[c_lvl] = df_master[c_lvl].ffill().astype(str).str.strip().str.upper()
-    if 'KATEGORI' in df_master.columns: df_master['KATEGORI'] = df_master['KATEGORI'].ffill().astype(str).str.strip().str.upper()
-    if 'DETAIL KATEGORI' in df_master.columns: df_master['DETAIL KATEGORI'] = df_master['DETAIL KATEGORI'].ffill().astype(str).str.strip().str.upper()
-    
-    df_trans = load_data(GID_DASHBOARD)
-    df_trans.columns = df_trans.columns.str.strip().str.upper()
-    
-    c_tgl_h = next((c for c in df_trans.columns if ('TANGGAL' in c or 'TGL' in c or 'DATE' in c) and 'REKAP' not in c), None)
-    c_harga_h = next((c for c in df_trans.columns if 'HARGA' in c), None)
-    c_baku_h = next((c for c in df_trans.columns if 'BAKU' in c), None)
-    
-    latest_price_map = {}
-    if c_tgl_h and c_harga_h and c_baku_h:
-        df_trans['PRICE_TEMP'] = df_trans[c_harga_h].apply(parse_harga)
-        df_valid_trans = df_trans.dropna(subset=[c_baku_h]).copy()
+@st.cache_data(ttl=120)
+def get_processed_database():
+    try:
+        df_m = load_raw_data(GID_MASTER)
+        df_t = load_raw_data(GID_DASHBOARD)
+        df_v = load_raw_data(GID_VENDOR)
         
-        if not df_valid_trans.empty:
-            df_valid_trans['TRUE_DATE'] = df_valid_trans[c_tgl_h].apply(convert_to_standard_date)
-            df_sorted = df_valid_trans.sort_values(by=[c_baku_h, 'TRUE_DATE'], ascending=[True, True])
-            df_latest = df_sorted.drop_duplicates(subset=[c_baku_h], keep='last')
+        df_m.columns = df_m.columns.str.strip().str.upper()
+        df_m = df_m.dropna(subset=['NAMA BAKU'])
+        
+        c_lvl = next((c for c in df_m.columns if 'LEVEL' in c or 'KELOMPOK' in c), 'LEVEL')
+        if c_lvl in df_m.columns: df_m[c_lvl] = df_m[c_lvl].ffill().astype(str).str.strip().str.upper()
+        if 'KATEGORI' in df_m.columns: df_m['KATEGORI'] = df_m['KATEGORI'].ffill().astype(str).str.strip().str.upper()
+        if 'DETAIL KATEGORI' in df_m.columns: df_m['DETAIL KATEGORI'] = df_m['DETAIL KATEGORI'].ffill().astype(str).str.strip().str.upper()
+        
+        df_t.columns = df_t.columns.str.strip().str.upper()
+        df_v.columns = df_v.columns.str.strip().str.upper()
+        
+        c_tgl_h = next((c for c in df_t.columns if ('TANGGAL' in c or 'TGL' in c or 'DATE' in c) and 'REKAP' not in c), None)
+        c_harga_h = next((c for c in df_t.columns if 'HARGA' in c), None)
+        c_baku_h = next((c for c in df_t.columns if 'BAKU' in c), None)
+        
+        lp_map = {}
+        if c_tgl_h and c_harga_h and c_baku_h:
+            df_t['PRICE_TEMP'] = df_t[c_harga_h].apply(parse_harga)
+            df_valid_t = df_t.dropna(subset=[c_baku_h]).copy()
+            if not df_valid_t.empty:
+                df_valid_t['TRUE_DATE'] = df_valid_t[c_tgl_h].apply(convert_to_standard_date)
+                df_sorted = df_valid_t.sort_values(by=[c_baku_h, 'TRUE_DATE'], ascending=[True, True])
+                df_latest = df_sorted.drop_duplicates(subset=[c_baku_h], keep='last')
+                for _, row in df_latest.iterrows():
+                    if row['PRICE_TEMP'] > 0:
+                        lp_map[str(row[c_baku_h]).strip().upper()] = {
+                            'harga': row['PRICE_TEMP'],
+                            'tanggal': str(row[c_tgl_h]).strip()
+                        }
+
+        df_m['AI_LOOKUP'] = df_m['NAMA BAKU'].astype(str).str.upper()
+        if 'NAMA ITEM' in df_m.columns: df_m['AI_LOOKUP'] += " " + df_m['NAMA ITEM'].fillna("").astype(str).str.upper()
             
-            for _, row in df_latest.iterrows():
-                if row['PRICE_TEMP'] > 0:
-                    latest_price_map[str(row[c_baku_h]).strip().upper()] = {
-                        'harga': row['PRICE_TEMP'],
-                        'tanggal': str(row[c_tgl_h]).strip()
-                    }
-
-    df_master['AI_LOOKUP'] = df_master['NAMA BAKU'].astype(str).str.upper()
-    if 'NAMA ITEM' in df_master.columns: df_master['AI_LOOKUP'] += " " + df_master['NAMA ITEM'].fillna("").astype(str).str.upper()
+        s_list = df_m['AI_LOOKUP'].tolist()
+        l_map = dict(zip(df_m['AI_LOOKUP'], df_m['NAMA BAKU']))
         
-    search_list = df_master['AI_LOOKUP'].tolist()
-    lookup_to_baku_map = dict(zip(df_master['AI_LOOKUP'], df_master['NAMA BAKU']))
-    
-    df_master_clean = df_master.drop_duplicates(subset=['NAMA BAKU'], keep='last').copy()
-    mapping_master_info = df_master_clean.set_index('NAMA BAKU').to_dict('index')
+        df_m_clean = df_m.drop_duplicates(subset=['NAMA BAKU'], keep='last').copy()
+        m_info = df_m_clean.set_index('NAMA BAKU').to_dict('index')
 
-except Exception as e:
-    st.error(f"⚠️ Gagal Load Database Utama: {e}"); st.stop()
+        return df_m, df_t, df_v, df_m_clean, m_info, s_list, l_map, lp_map
+    except Exception as e:
+        return None, None, None, None, None, None, None, None
+
+# Assign Data
+df_master, df_trans, df_vendor, df_master_clean, mapping_master_info, search_list, lookup_to_baku_map, latest_price_map = get_processed_database()
+
+if df_master is None:
+    st.error("⚠️ Gagal Load Database Utama: Pastikan link Google Sheets valid dan dapat diakses.")
+    st.stop()
 
 # ==========================================
 # 5. SISTEM KEAMANAN LUXURY (2 PINTU LOGIN)
@@ -274,6 +285,24 @@ if not st.session_state['logged_in']:
             st.markdown("""
             **Selamat datang di ERP Purchasing PT Panca Budi Idaman Tbk!**
             Sistem ini dirancang untuk mempermudah operasional *Supply Chain*, pencarian spesifikasi barang, dan standardisasi data antar seluruh pabrik.
+
+            ---
+            **🚪 1. PINTU TAMU (Guest Access)**
+            Dikhususkan untuk staf Pabrik atau Gudang.
+            * **Akses Masuk:** Tidak memerlukan kata sandi. Langsung klik tombol putih *"Masuk Sebagai Tamu"*.
+            * **Fitur Terbuka:** * `Pencarian Barang`: Ketik nama barang/SKU untuk mencari spesifikasi standar pusat.
+                * `E-Catalog`: Melihat foto fisik barang, estimasi harga terakhir beserta Tanggal PO-nya, dan download PDF Katalog.
+                * `Database Vendor`: Mencari nomor telepon dan nama PIC Supplier.
+            * *Catatan: Modul Tamu bersifat "Read-Only". Anda tidak dapat menghapus atau merubah data apapun.*
+
+            **👑 2. PINTU ADMIN (Admin Portal)**
+            Dikhususkan untuk tim Holding Purchasing Pusat.
+            * **Akses Masuk:** Wajib memasukkan Kata Sandi Rahasia Otoritas.
+            * **Fitur Ekstra Terbuka:**
+                * `Pembersihan PO`: Mesin AI untuk menyamakan nama laporan mentah dari plant (RA, PGP, dll) ke dalam bahasa standar Holding.
+                * `Double Injection`: Simpan ke Sheet 3 & Sheet 4 secara bersamaan.
+                * `Asset Studio`: Fitur Injeksi Gambar (Bisa Copy-Paste Ctrl+V langsung dari Google).
+                * `Dashboard Laporan`: Akses *Executive Filter* dan AI Forecasting.
             """)
     
     st.markdown("<div style='margin-bottom: 2.5vh;'></div>", unsafe_allow_html=True)
@@ -394,7 +423,7 @@ if menu == "Pembersihan PO":
                     is_laporan_po = False
                     is_laporan_pi_saldo = False
                     
-                    # SCANNER FORMAT MASIF DENGAN KINERJA TINGGI
+                    # SCANNER FORMAT MASIF
                     sample_text = " ".join([str(df_input.iloc[r].values).strip().upper() for r in range(min(20, len(df_input)))])
                     
                     if "LAPORAN PO PER PEMASOK" in sample_text: is_laporan_po = True
@@ -446,12 +475,10 @@ if menu == "Pembersihan PO":
                             val_bukti = str(row.values[col_no_bukti]).strip() if pd.notna(row.values[col_no_bukti]) else ""
                             val_tgl = str(row.values[col_t_terima]).strip() if col_t_terima != -1 and pd.notna(row.values[col_t_terima]) else ""
                             
-                            # Vendor Auto-Memory
                             if val_bukti != "" and val_tgl == "":
                                 if val_bukti.upper() not in ["EUR", "RP", "USD", "IDR"]: curr_vendor = val_bukti
                                 continue
                                 
-                            # Baris Barang
                             if val_bukti != "" and val_tgl != "":
                                 item_val1 = str(row.values[col_nama]).strip() if col_nama != -1 and pd.notna(row.values[col_nama]) else ""
                                 item_val2 = str(row.values[col_bahan]).strip() if col_bahan != -1 and pd.notna(row.values[col_bahan]) else ""
@@ -474,7 +501,7 @@ if menu == "Pembersihan PO":
                                 })
 
                 # ===================================================================
-                # LOGIKA 2: LAPORAN PI SALDO (NEW PGP FORMAT DETECTOR) - V16.0 ADDED
+                # LOGIKA 2: LAPORAN PI SALDO (PGP BARU)
                 # ===================================================================
                 elif format_type == "LAPORAN_PI_SALDO":
                     col_tgl_lpb = -1
@@ -501,7 +528,6 @@ if menu == "Pembersihan PO":
                             val_tgl_raw = str(row.values[col_tgl_lpb]).strip() if col_tgl_lpb != -1 and pd.notna(row.values[col_tgl_lpb]) else ""
                             
                             if val_po == "" and val_tgl_raw == "":
-                                # Cek Vendor Biru di baris kosong
                                 potensi_vendor = [str(c).strip() for c in row.values if pd.notna(c) and str(c).strip() != '']
                                 if potensi_vendor:
                                     kandidat = potensi_vendor[0].upper()
@@ -812,7 +838,7 @@ if menu == "Pembersihan PO":
                             sheet_dash.append_rows(data_to_push)
                             sheet_sandbox.append_rows(data_to_push)
                             st.balloons(); st.success(f"🔥 BERHASIL! {len(data_to_push)} Data tersimpan."); 
-                            del st.session_state['holding_draft']; time.sleep(1.5); st.rerun()
+                            del st.session_state['holding_draft']; time.sleep(1.5); st.cache_data.clear(); st.rerun()
                         else: st.warning("Tidak ada data valid untuk disimpan.")
                 except Exception as e: st.error(f"Simpan Gagal: {e}")
         with c2:
@@ -822,8 +848,23 @@ if menu == "Pembersihan PO":
             df_to_export = edited_df[edited_df["❌ BUKAN SCOPE"] == False]
             if filter_dokumen_valid: df_to_export = df_to_export[(df_to_export['PO'].astype(str).str.strip() != "") | (df_to_export['NO FPB'].astype(str).str.strip() != "")]
             if not df_to_export.empty:
+                export_data = []
+                tz_wib = datetime.timezone(datetime.timedelta(hours=7))
+                tgl_rekap_export = datetime.datetime.now(tz_wib).strftime("%Y-%m-%d %H:%M:%S") if auto_time else manual_date.strftime("%Y-%m-%d")
+                for _, r in df_to_export.iterrows():
+                    info = mapping_master_info.get(r['NAMA_BAKU'], {})
+                    kat_final = info.get('KATEGORI', '-') if r['NAMA_BAKU'] != "⚠️ BARANG BARU" else str(r.get('KATEGORI', '-')).strip().upper()
+                    det_kat_final = info.get('DETAIL KATEGORI', '-') if r['NAMA_BAKU'] != "⚠️ BARANG BARU" else str(r.get('DETAIL KATEGORI', '-')).strip().upper()
+                    export_data.append({
+                        'UNIT KERJA': r['UNIT'], 'NOMOR PO': r['PO'], 'NO FPB': r['NO FPB'], 'TANGGAL': r['TANGGAL'], 'NAMA VENDOR': r['VENDOR'], 
+                        'MATA UANG': "RP", 'NAMA ITEM ASLI (KOTOR)': r['ITEM_ASLI'], 'NAMA BARANG (BAKU)': r['NAMA_BAKU'], 
+                        'QTY': r['QTY'], 'UOM': r['SATUAN'], 'HARGA SATUAN': r['HARGA'], 'STATUS PPN': r['STATUS PPN'],
+                        'KATEGORI': kat_final, 'DETAIL KATEGORI': det_kat_final, 'SKU': r['SKU'], 'TANGGAL REKAP': tgl_rekap_export
+                    })
+                
+                df_final_export = pd.DataFrame(export_data).fillna("-")
                 buffer_clean = io.BytesIO()
-                with pd.ExcelWriter(buffer_clean, engine='openpyxl') as writer: df_to_export.to_excel(writer, index=False, sheet_name='Data Bersih')
+                with pd.ExcelWriter(buffer_clean, engine='openpyxl') as writer: df_final_export.to_excel(writer, index=False, sheet_name='Data Bersih')
                 st.download_button("📥 Download Hasil (Excel Rapi)", data=buffer_clean.getvalue(), file_name=f"Data_Bersih_{datetime.date.today()}.xlsx", use_container_width=True)
         except: pass
 
@@ -941,18 +982,30 @@ elif menu == "E-Catalog & Studio":
 # MENU 4: DATABASE VENDOR
 # ==========================================
 elif menu == "Database Vendor":
-    st.markdown("<h2>🏢 Supplier Directory</h2>", unsafe_allow_html=True)
+    st.markdown("<h2>🏢 Supplier Directory & Transaction History</h2>", unsafe_allow_html=True)
     keyword = st.text_input("Cari Vendor / PIC / Item:")
     try:
-        df_v = load_data(GID_VENDOR)
-        if not df_v.empty:
-            df_v.columns = df_v.columns.str.strip().str.upper()
-            res = df_v[df_v.astype(str).apply(lambda x: x.str.contains(keyword, case=False)).any(axis=1)] if keyword else df_v.head(100)
-            for _, v in res.iterrows():
-                with st.expander(f"🏢 {v.get('NAMA VENDOR', '-')} | Cat: {v.get('KATEGORI', '-')} "):
+        if not df_vendor.empty:
+            res = df_vendor[df_vendor.astype(str).apply(lambda x: x.str.contains(keyword, case=False)).any(axis=1)] if keyword else df_vendor.head(100)
+            for idx, v in res.iterrows():
+                v_name = str(v.get('NAMA VENDOR', '-'))
+                with st.expander(f"🏢 {v_name} | Cat: {v.get('KATEGORI', '-')} "):
                     st.write(f"**PIC:** {v.get('PIC', '-')} 📞 {v.get('KONTAK', '-')}")
                     st.write(f"**Alamat:** {v.get('ALAMAT', '-')}")
-    except: st.warning("Database Error.")
+                    
+                    # FITUR VENDOR DRILL-DOWN (TOGGLE)
+                    if st.toggle(f"🔍 Tampilkan Histori Transaksi", key=f"tgl_{idx}"):
+                        histori = df_trans[df_trans['VENDOR'].astype(str).str.contains(v_name, case=False, na=False, regex=False)]
+                        if not histori.empty:
+                            histori_clean = histori[['TANGGAL', 'PO', 'UNIT', 'BAKU', 'QTY', 'HARGA', 'TOTAL']].copy()
+                            histori_clean.rename(columns={'BAKU': 'NAMA BARANG'}, inplace=True)
+                            st.write(f"**Total Transaksi:** {len(histori)}")
+                            st.dataframe(histori_clean, use_container_width=True, hide_index=True)
+                        else:
+                            st.info("Tidak ada histori transaksi untuk vendor ini di sistem (Belum pernah PO).")
+        else:
+            st.warning("Data Vendor Kosong di Spreadsheet.")
+    except Exception as e: st.error(f"Database Error: {e}")
 
 # ==========================================
 # MENU 5: DASHBOARD LAPORAN
@@ -960,12 +1013,8 @@ elif menu == "Database Vendor":
 elif menu == "Dashboard Laporan":
     st.markdown("<h2>📊 Procurement Intelligence & Forecasting</h2>", unsafe_allow_html=True)
     try:
-        data_dash = get_gspread_client().open_by_key(SHEET_ID).get_worksheet_by_id(int(GID_DASHBOARD)).get_all_values()
-        df_v = load_data(GID_VENDOR); df_v.columns = df_v.columns.str.strip().str.upper()
-        if len(data_dash) > 1:
-            df_d = pd.DataFrame(data_dash[1:], columns=data_dash[0])
-            df_d.columns = df_d.columns.str.strip().str.upper()
-            
+        df_d = df_trans.copy()
+        if not df_d.empty:
             c_po = next((c for c in df_d.columns if 'PO' in c or 'BUKTI' in c), None)
             c_unit = next((c for c in df_d.columns if 'UNIT' in c or 'GRUP' in c), None)
             c_harga = next((c for c in df_d.columns if 'HARGA' in c), None)
@@ -977,112 +1026,111 @@ elif menu == "Dashboard Laporan":
             df_d['TOTAL'] = df_d['H_NUM'] * df_d['Q_NUM']
             df_d['DATE_CLEAN'] = df_d[c_tgl].apply(convert_to_standard_date)
             
-            if not df_d.empty:
-                min_date, max_date = df_d['DATE_CLEAN'].min().date(), df_d['DATE_CLEAN'].max().date()
-                today = datetime.date.today()
+            min_date, max_date = df_d['DATE_CLEAN'].min().date(), df_d['DATE_CLEAN'].max().date()
+            today = datetime.date.today()
 
-                if 'start_date' not in st.session_state: st.session_state.start_date = min_date
-                if 'end_date' not in st.session_state: st.session_state.end_date = max_date
+            if 'start_date' not in st.session_state: st.session_state.start_date = min_date
+            if 'end_date' not in st.session_state: st.session_state.end_date = max_date
 
-                c_btn1, c_btn2, c_btn3, c_btn4 = st.columns(4)
-                if c_btn1.button("♾️ Semua Waktu", use_container_width=True): st.session_state.start_date = min_date; st.session_state.end_date = max_date; st.rerun()
-                if c_btn2.button("📅 Tahun Ini", use_container_width=True): st.session_state.start_date = datetime.date(today.year, 1, 1); st.session_state.end_date = today; st.rerun()
-                if c_btn3.button("📆 Bulan Ini", use_container_width=True): st.session_state.start_date = today.replace(day=1); st.session_state.end_date = today; st.rerun()
-                if c_btn4.button("🗓️ Minggu Ini", use_container_width=True): st.session_state.start_date = today - datetime.timedelta(days=today.weekday()); st.session_state.end_date = today; st.rerun()
+            c_btn1, c_btn2, c_btn3, c_btn4 = st.columns(4)
+            if c_btn1.button("♾️ Semua Waktu", use_container_width=True): st.session_state.start_date = min_date; st.session_state.end_date = max_date; st.rerun()
+            if c_btn2.button("📅 Tahun Ini", use_container_width=True): st.session_state.start_date = datetime.date(today.year, 1, 1); st.session_state.end_date = today; st.rerun()
+            if c_btn3.button("📆 Bulan Ini", use_container_width=True): st.session_state.start_date = today.replace(day=1); st.session_state.end_date = today; st.rerun()
+            if c_btn4.button("🗓️ Minggu Ini", use_container_width=True): st.session_state.start_date = today - datetime.timedelta(days=today.weekday()); st.session_state.end_date = today; st.rerun()
 
-                c_date, c_fac, c_export = st.columns([1.5, 1.5, 1])
-                with c_date: date_range = st.date_input("Rentang Tanggal:", value=(st.session_state.start_date, st.session_state.end_date))
-                with c_fac: filter_unit = st.selectbox("Lokasi Pabrik:", ["All Facilities"] + sorted([u for u in df_d[c_unit].unique() if str(u).strip() != ""]))
+            c_date, c_fac, c_export = st.columns([1.5, 1.5, 1])
+            with c_date: date_range = st.date_input("Rentang Tanggal:", value=(st.session_state.start_date, st.session_state.end_date))
+            with c_fac: filter_unit = st.selectbox("Lokasi Pabrik:", ["All Facilities"] + sorted([u for u in df_d[c_unit].unique() if str(u).strip() != ""]))
 
-                df_filtered = df_d[(df_d['DATE_CLEAN'].dt.date >= date_range[0]) & (df_d['DATE_CLEAN'].dt.date <= date_range[1])] if len(date_range) == 2 else df_d
-                if filter_unit != "All Facilities": df_filtered = df_filtered[df_filtered[c_unit] == filter_unit]
-                
-                with c_export:
-                    buffer = io.BytesIO()
-                    with pd.ExcelWriter(buffer, engine='openpyxl') as writer: df_filtered.drop(columns=['H_NUM', 'Q_NUM', 'DATE_CLEAN'], errors='ignore').to_excel(writer, index=False)
-                    st.download_button("📥 Download Excel", data=buffer.getvalue(), file_name=f"Laporan_{filter_unit}.xlsx", use_container_width=True)
+            df_filtered = df_d[(df_d['DATE_CLEAN'].dt.date >= date_range[0]) & (df_d['DATE_CLEAN'].dt.date <= date_range[1])] if len(date_range) == 2 else df_d
+            if filter_unit != "All Facilities": df_filtered = df_filtered[df_filtered[c_unit] == filter_unit]
+            
+            with c_export:
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine='openpyxl') as writer: df_filtered.drop(columns=['H_NUM', 'Q_NUM', 'DATE_CLEAN'], errors='ignore').to_excel(writer, index=False)
+                st.download_button("📥 Download Excel", data=buffer.getvalue(), file_name=f"Laporan_{filter_unit}.xlsx", use_container_width=True)
 
-                st.markdown("---")
-                if df_filtered.empty: st.warning("⚠️ Tidak ada transaksi.")
-                else:
-                    tab_summary, tab_item = st.tabs(["🌐 Corporate Overview", "🔎 Item Analytics & AI Forecast"])
-                    with tab_summary:
-                        st.write("") 
-                        col1, col2, col3 = st.columns(3)
-                        with col1: st.markdown(create_metric_card("fa-solid fa-sack-dollar", "Total Value", format_rupiah(df_filtered['TOTAL'].sum())), unsafe_allow_html=True)
-                        with col2: st.markdown(create_metric_card("fa-solid fa-file-invoice", "PO Transactions", f"{df_filtered[c_po].replace('', pd.NA).dropna().nunique()}"), unsafe_allow_html=True)
-                        with col3: st.markdown(create_metric_card("fa-solid fa-industry", "Active Facilities", f"{df_filtered[c_unit].nunique()}"), unsafe_allow_html=True)
-                        
-                        c_a, c_b = st.columns([1, 1.5])
-                        with c_a:
-                            st.markdown("<h4 style='font-size:16px; margin-top:15px;'>Budget Distribution</h4>", unsafe_allow_html=True)
-                            if filter_unit == "All Facilities":
-                                rekap_u = df_filtered.groupby(c_unit)['TOTAL'].sum().reset_index()
-                                fig_pie = px.pie(rekap_u[rekap_u[c_unit].str.strip() != ""], names=c_unit, values='TOTAL', hole=0.6, color_discrete_sequence=['#047857', '#10B981', '#34D399', '#6EE7B7'])
-                                st.plotly_chart(fig_pie, use_container_width=True, theme=None)
-                            else: st.info(f"Viewing specialized data for **{filter_unit}**.")
-
-                        with c_b:
-                            st.markdown("<h4 style='font-size:16px; margin-top:15px;'>Top Procurement Items</h4>", unsafe_allow_html=True)
-                            df_valid = df_filtered[~df_filtered[c_baku].str.contains('CEK MANUAL|BARANG BARU', case=False, na=False)]
-                            if not df_valid.empty:
-                                top_i = df_valid[df_valid[c_baku].str.strip() != ""].groupby(c_baku)[c_po].nunique().reset_index()
-                                top_i.columns = ['Nama Barang', 'Jumlah PO']
-                                fig_bar = px.bar(top_i.sort_values(by='Jumlah PO', ascending=False).head(8), x='Jumlah PO', y='Nama Barang', orientation='h', color_discrete_sequence=['#047857'])
-                                fig_bar.update_layout(yaxis={'categoryorder':'total ascending'})
-                                st.plotly_chart(fig_bar, use_container_width=True, theme=None)
+            st.markdown("---")
+            if df_filtered.empty: st.warning("⚠️ Tidak ada transaksi.")
+            else:
+                tab_summary, tab_item = st.tabs(["🌐 Corporate Overview", "🔎 Item Analytics & AI Forecast"])
+                with tab_summary:
+                    st.write("") 
+                    col1, col2, col3 = st.columns(3)
+                    with col1: st.markdown(create_metric_card("fa-solid fa-sack-dollar", "Total Value", format_rupiah(df_filtered['TOTAL'].sum())), unsafe_allow_html=True)
+                    with col2: st.markdown(create_metric_card("fa-solid fa-file-invoice", "PO Transactions", f"{df_filtered[c_po].replace('', pd.NA).dropna().nunique()}"), unsafe_allow_html=True)
+                    with col3: st.markdown(create_metric_card("fa-solid fa-industry", "Active Facilities", f"{df_filtered[c_unit].nunique()}"), unsafe_allow_html=True)
                     
-                    with tab_item:
-                        barang_pilih = st.multiselect("Search Product Intelligence:", df_filtered.drop_duplicates(subset=[c_baku]).sort_values(by=c_baku)[c_baku].tolist())
-                        if barang_pilih:
-                            df_item_histori = df_filtered[df_filtered[c_baku].isin(barang_pilih)].sort_values(by='DATE_CLEAN')
-                            if len(barang_pilih) == 1:
-                                item_tunggal = barang_pilih[0]
-                                info_master = df_master_clean[df_master_clean['NAMA BAKU'] == item_tunggal].tail(1)
-                                kat_item = str(info_master.iloc[0].get('KATEGORI', '')).upper() if not info_master.empty else "NAN"
-                                v_histori = sorted([str(v).strip() for v in df_item_histori['VENDOR'].unique() if str(v).strip() not in ['', '-', 'nan']])
-                                v_database = sorted(df_v[df_v['KATEGORI'].astype(str).str.contains(kat_item, case=False, na=False)]['NAMA VENDOR'].unique().tolist()) if kat_item != "NAN" and not df_v.empty else []
+                    c_a, c_b = st.columns([1, 1.5])
+                    with c_a:
+                        st.markdown("<h4 style='font-size:16px; margin-top:15px;'>Budget Distribution</h4>", unsafe_allow_html=True)
+                        if filter_unit == "All Facilities":
+                            rekap_u = df_filtered.groupby(c_unit)['TOTAL'].sum().reset_index()
+                            fig_pie = px.pie(rekap_u[rekap_u[c_unit].str.strip() != ""], names=c_unit, values='TOTAL', hole=0.6, color_discrete_sequence=['#047857', '#10B981', '#34D399', '#6EE7B7'])
+                            st.plotly_chart(fig_pie, use_container_width=True, theme=None)
+                        else: st.info(f"Viewing specialized data for **{filter_unit}**.")
 
-                                st.markdown("<br>", unsafe_allow_html=True)
-                                c_img, c_meta = st.columns([1, 2.5])
-                                with c_img:
-                                    if not info_master.empty:
-                                        img_url = process_image_url(str(info_master.iloc[0].get('LINK GAMBAR', '')).strip())
-                                        if img_url: st.markdown(f"<img src='{img_url}' width='100%' style='border-radius:8px;'>", unsafe_allow_html=True)
-                                with c_meta:
-                                    st.markdown(f"<h3 style='margin-top:0;'>{item_tunggal}</h3>", unsafe_allow_html=True)
-                                    if not info_master.empty:
-                                        st.markdown(f"**SKU:** {info_master.iloc[0].get('NOMOR SKU', '-')} | **CAT:** {kat_item} | **UOM:** {info_master.iloc[0].get('SATUAN', '-')}")
-                                        st.write(f"**Histori Supplier:** {', '.join(v_histori)}")
-                                        st.write(f"**Rekomendasi Supplier:** {', '.join(v_database)}")
+                    with c_b:
+                        st.markdown("<h4 style='font-size:16px; margin-top:15px;'>Top Procurement Items</h4>", unsafe_allow_html=True)
+                        df_valid = df_filtered[~df_filtered[c_baku].str.contains('CEK MANUAL|BARANG BARU', case=False, na=False)]
+                        if not df_valid.empty:
+                            top_i = df_valid[df_valid[c_baku].str.strip() != ""].groupby(c_baku)[c_po].nunique().reset_index()
+                            top_i.columns = ['Nama Barang', 'Jumlah PO']
+                            fig_bar = px.bar(top_i.sort_values(by='Jumlah PO', ascending=False).head(8), x='Jumlah PO', y='Nama Barang', orientation='h', color_discrete_sequence=['#047857'])
+                            fig_bar.update_layout(yaxis={'categoryorder':'total ascending'})
+                            st.plotly_chart(fig_bar, use_container_width=True, theme=None)
+                
+                with tab_item:
+                    barang_pilih = st.multiselect("Search Product Intelligence:", df_filtered.drop_duplicates(subset=[c_baku]).sort_values(by=c_baku)[c_baku].tolist())
+                    if barang_pilih:
+                        df_item_histori = df_filtered[df_filtered[c_baku].isin(barang_pilih)].sort_values(by='DATE_CLEAN')
+                        if len(barang_pilih) == 1:
+                            item_tunggal = barang_pilih[0]
+                            info_master = df_master_clean[df_master_clean['NAMA BAKU'] == item_tunggal].tail(1)
+                            kat_item = str(info_master.iloc[0].get('KATEGORI', '')).upper() if not info_master.empty else "NAN"
+                            v_histori = sorted([str(v).strip() for v in df_item_histori['VENDOR'].unique() if str(v).strip() not in ['', '-', 'nan']])
+                            v_database = sorted(df_vendor[df_vendor['KATEGORI'].astype(str).str.contains(kat_item, case=False, na=False)]['NAMA VENDOR'].unique().tolist()) if kat_item != "NAN" and not df_vendor.empty else []
+
+                            st.markdown("<br>", unsafe_allow_html=True)
+                            c_img, c_meta = st.columns([1, 2.5])
+                            with c_img:
+                                if not info_master.empty:
+                                    img_url = process_image_url(str(info_master.iloc[0].get('LINK GAMBAR', '')).strip())
+                                    if img_url: st.markdown(f"<img src='{img_url}' width='100%' style='border-radius:8px;'>", unsafe_allow_html=True)
+                            with c_meta:
+                                st.markdown(f"<h3 style='margin-top:0;'>{item_tunggal}</h3>", unsafe_allow_html=True)
+                                if not info_master.empty:
+                                    st.markdown(f"**SKU:** {info_master.iloc[0].get('NOMOR SKU', '-')} | **CAT:** {kat_item} | **UOM:** {info_master.iloc[0].get('SATUAN', '-')}")
+                                    st.write(f"**Histori Supplier:** {', '.join(v_histori)}")
+                                    st.write(f"**Rekomendasi Supplier:** {', '.join(v_database)}")
+                            
+                            st.markdown("---")
+                            if not df_item_histori.empty:
+                                m1, m2, m3, m4 = st.columns(4)
+                                with m1: st.markdown(create_metric_card("fa-solid fa-money-bill-wave", "Total Cost", format_rupiah(df_item_histori['TOTAL'].sum())), unsafe_allow_html=True)
+                                with m2: st.markdown(create_metric_card("fa-solid fa-cart-shopping", "Transactions", f"{df_item_histori[c_po].nunique()}"), unsafe_allow_html=True)
+                                with m3: st.markdown(create_metric_card("fa-solid fa-tag", "Avg Price", format_rupiah(df_item_histori['H_NUM'].mean())), unsafe_allow_html=True)
+                                with m4: st.markdown(create_metric_card("fa-solid fa-handshake", "Suppliers", f"{len(v_histori)}"), unsafe_allow_html=True)
+
+                                g_harga, g_qty = st.columns(2)
+                                with g_harga: st.plotly_chart(px.line(df_item_histori, x='DATE_CLEAN', y='H_NUM', title="Price Volatility", markers=True), use_container_width=True)
+                                with g_qty: st.plotly_chart(px.bar(df_item_histori.groupby(pd.Grouper(key='DATE_CLEAN', freq='ME'))['Q_NUM'].sum().reset_index(), x='DATE_CLEAN', y='Q_NUM', title="Procurement Volume"), use_container_width=True)
                                 
                                 st.markdown("---")
-                                if not df_item_histori.empty:
-                                    m1, m2, m3, m4 = st.columns(4)
-                                    with m1: st.markdown(create_metric_card("fa-solid fa-money-bill-wave", "Total Cost", format_rupiah(df_item_histori['TOTAL'].sum())), unsafe_allow_html=True)
-                                    with m2: st.markdown(create_metric_card("fa-solid fa-cart-shopping", "Transactions", f"{df_item_histori[c_po].nunique()}"), unsafe_allow_html=True)
-                                    with m3: st.markdown(create_metric_card("fa-solid fa-tag", "Avg Price", format_rupiah(df_item_histori['H_NUM'].mean())), unsafe_allow_html=True)
-                                    with m4: st.markdown(create_metric_card("fa-solid fa-handshake", "Suppliers", f"{len(v_histori)}"), unsafe_allow_html=True)
-
-                                    g_harga, g_qty = st.columns(2)
-                                    with g_harga: st.plotly_chart(px.line(df_item_histori, x='DATE_CLEAN', y='H_NUM', title="Price Volatility", markers=True), use_container_width=True)
-                                    with g_qty: st.plotly_chart(px.bar(df_item_histori.groupby(pd.Grouper(key='DATE_CLEAN', freq='ME'))['Q_NUM'].sum().reset_index(), x='DATE_CLEAN', y='Q_NUM', title="Procurement Volume"), use_container_width=True)
+                                st.markdown("<h3>🔮 AI Forecasting & Budget Projection</h3>", unsafe_allow_html=True)
+                                df_monthly_fc = df_item_histori.groupby(pd.Grouper(key='DATE_CLEAN', freq='ME'))['Q_NUM'].sum().reset_index()
+                                if len(df_monthly_fc) >= 1:
+                                    avg_qty = df_monthly_fc['Q_NUM'].mean()
+                                    latest_price = df_item_histori.sort_values(by='DATE_CLEAN').iloc[-1]['H_NUM']
+                                    uom = info_master.iloc[0].get('SATUAN', 'Pcs') if not info_master.empty else "Pcs"
                                     
-                                    st.markdown("---")
-                                    st.markdown("<h3>🔮 AI Forecasting & Budget Projection</h3>", unsafe_allow_html=True)
-                                    df_monthly_fc = df_item_histori.groupby(pd.Grouper(key='DATE_CLEAN', freq='ME'))['Q_NUM'].sum().reset_index()
-                                    if len(df_monthly_fc) >= 1:
-                                        avg_qty = df_monthly_fc['Q_NUM'].mean()
-                                        latest_price = df_item_histori.sort_values(by='DATE_CLEAN').iloc[-1]['H_NUM']
-                                        uom = info_master.iloc[0].get('SATUAN', 'Pcs') if not info_master.empty else "Pcs"
-                                        
-                                        c_fc1, c_fc2, c_fc3 = st.columns(3)
-                                        with c_fc1: st.markdown(create_metric_card("fa-solid fa-chart-line", "Rata-rata Kebutuhan", f"{avg_qty:.0f} {uom}"), unsafe_allow_html=True)
-                                        with c_fc2: st.markdown(create_metric_card("fa-solid fa-tags", "Patokan Harga", format_rupiah(latest_price)), unsafe_allow_html=True)
-                                        with c_fc3: st.markdown(create_metric_card("fa-solid fa-vault", "Estimasi Budget", format_rupiah(avg_qty * latest_price)), unsafe_allow_html=True)
-                            else:
-                                st.markdown("<h3>⚖️ Multi-Item Comparison</h3>", unsafe_allow_html=True)
-                                st.plotly_chart(px.line(df_item_histori, x='DATE_CLEAN', y='H_NUM', color=c_baku, title="Price Comparison", markers=True), use_container_width=True)
+                                    c_fc1, c_fc2, c_fc3 = st.columns(3)
+                                    with c_fc1: st.markdown(create_metric_card("fa-solid fa-chart-line", "Rata-rata Kebutuhan", f"{avg_qty:.0f} {uom}"), unsafe_allow_html=True)
+                                    with c_fc2: st.markdown(create_metric_card("fa-solid fa-tags", "Patokan Harga", format_rupiah(latest_price)), unsafe_allow_html=True)
+                                    with c_fc3: st.markdown(create_metric_card("fa-solid fa-vault", "Estimasi Budget", format_rupiah(avg_qty * latest_price)), unsafe_allow_html=True)
+                        else:
+                            st.markdown("<h3>⚖️ Multi-Item Comparison</h3>", unsafe_allow_html=True)
+                            st.plotly_chart(px.line(df_item_histori, x='DATE_CLEAN', y='H_NUM', color=c_baku, title="Price Comparison", markers=True), use_container_width=True)
     except Exception as e: st.error(f"Dashboard Error: {e}")
 
 # ==========================================
@@ -1156,11 +1204,11 @@ elif menu == "Maintenance Data":
                             sheet_master.update(values=[df_full.columns.tolist()] + df_full.values.tolist())
                             
                             st.success("✔️ Berhasil! Master Data telah diupdate."); del st.session_state['draft_sku_df']; del st.session_state['preview_sku_list']
-                            time.sleep(1.0); st.rerun()
+                            time.sleep(1.0); st.cache_data.clear(); st.rerun()
                         except Exception as e: st.error(f"Gagal menyimpan: {e}")
             with c2:
                 if st.button("❌ Batal", use_container_width=True): del st.session_state['draft_sku_df']; del st.session_state['preview_sku_list']; st.rerun()
     else: st.success("✔️ Database Sehat. Semua SKU terverifikasi.")
 
 st.markdown("---")
-st.markdown(f"<p style='text-align: center; color: #94A3B8; font-size: 12px;'>ERP Purchasing System v16.0 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti<br><span style='color: #10B981; font-weight: 600;'>🟢 Live Database tersinkronisasi pada: {get_sync_time()}</span></p>", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align: center; color: #94A3B8; font-size: 12px;'>ERP Purchasing System v17.2 | Proprietary of PT Panca Budi Idaman Tbk | Created with for Raihan Subakti<br><span style='color: #10B981; font-weight: 600;'>🟢 Live Database tersinkronisasi pada: {get_sync_time()}</span></p>", unsafe_allow_html=True)
